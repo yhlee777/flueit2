@@ -1,68 +1,106 @@
 "use client"
 
-import type React from "react"
-
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useState, type FormEvent } from "react"
+import { signIn } from "next-auth/react"
 
 export default function InfluencerSignupPage() {
   const router = useRouter()
-
   const [formData, setFormData] = useState({
     username: "",
+    email: "",
     password: "",
     confirmPassword: "",
   })
 
-  const handleInputChange = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }))
   }
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (formData.password !== formData.confirmPassword) {
-      alert("비밀번호가 일치하지 않습니다.")
-      return
+  const isFormValid =
+    formData.username &&
+    formData.email &&
+    formData.password &&
+    formData.confirmPassword &&
+    formData.password === formData.confirmPassword
+
+  const handleKakaoLogin = async () => {
+    try {
+      const result = await signIn('kakao', { 
+        callbackUrl: '/',
+        redirect: true 
+      })
+      
+      if (result?.error) {
+        alert('카카오 로그인에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('카카오 로그인 오류:', error)
+      alert('카카오 로그인 중 오류가 발생했습니다.')
     }
-    localStorage.setItem("influencer_mode", "true")
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/influencer/dashboard")
   }
 
-  const handleKakaoLogin = () => {
-    localStorage.setItem("influencer_mode", "true")
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/influencer/dashboard")
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signIn('google', { 
+        callbackUrl: '/',
+        redirect: true 
+      })
+      
+      if (result?.error) {
+        alert('구글 로그인에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('구글 로그인 오류:', error)
+      alert('구글 로그인 중 오류가 발생했습니다.')
+    }
   }
 
-  const handleGoogleLogin = () => {
-    localStorage.setItem("influencer_mode", "true")
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!isFormValid) return
+    
+    // 회원가입 로직
+    console.log("인플루언서 회원가입:", formData)
     localStorage.setItem("is_logged_in", "true")
-    router.push("/influencer/dashboard")
+    router.push("/")
   }
-
-  const isFormValid = formData.username && formData.password && formData.confirmPassword
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <main className="flex-1 px-4 pt-12">
-        <div className="w-full max-w-md mx-auto">
-          <div className="mb-6 text-left">
-            <h1 className="font-bold text-black mb-1 text-2xl">가입하기</h1>
-            <p className="text-gray-600 text-base leading-relaxed">인플루언서와 광고주를 잇다</p>
+      <header className="w-full px-4" style={{ height: "var(--gnb-height)" }}>
+        <div className="max-w-md mx-auto flex items-center gap-4 h-full">
+          <Link href="/" className="text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="w-6 h-6" />
+          </Link>
+          <h1 className="text-xl font-bold text-black">회원가입</h1>
+        </div>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md">
+          <div className="space-y-2 mb-8">
+            <h2 className="font-bold text-center text-2xl">인플루언서 회원가입</h2>
+            <p className="text-gray-500 text-center text-base">
+              가장 편리하고 쉬운 협업 진행과정,
+              <br />
+              인플루언서와 광고주를 잇다
+            </p>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="space-y-4">
+            <div className="space-y-2">
               <Label htmlFor="username" className="font-semibold">
                 아이디
               </Label>
               <Input
                 id="username"
+                type="text"
                 placeholder="아이디를 입력하세요"
                 value={formData.username}
                 onChange={handleInputChange("username")}
@@ -70,7 +108,21 @@ export default function InfluencerSignupPage() {
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="font-semibold">
+                이메일
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="이메일을 입력하세요"
+                value={formData.email}
+                onChange={handleInputChange("email")}
+                className="rounded-xl h-12"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="password" className="font-semibold">
                 비밀번호
               </Label>
@@ -84,7 +136,7 @@ export default function InfluencerSignupPage() {
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               <Label htmlFor="confirm-password" className="font-semibold">
                 비밀번호 확인
               </Label>

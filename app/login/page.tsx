@@ -1,34 +1,71 @@
 "use client"
 
 import type React from "react"
-
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 
 export default function LoginPage() {
   const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    username: "",
+    password: "",
+  })
+  const [error, setError] = useState("")
 
+  const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }))
+    setError("")
+  }
+
+  // 간단한 소셜 로그인 (자동 리다이렉트)
   const handleKakaoLogin = () => {
-    // Kakao login logic
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/")
+    signIn('kakao', { callbackUrl: '/' })
   }
 
   const handleGoogleLogin = () => {
-    // Google login logic
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/")
+    signIn('google', { callbackUrl: '/' })
   }
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    // Login logic
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/")
+    
+    if (!formData.username || !formData.password) {
+      setError("아이디와 비밀번호를 입력해주세요.")
+      return
+    }
+
+    setIsLoading(true)
+    setError("")
+
+    try {
+      const result = await signIn('credentials', {
+        username: formData.username,
+        password: formData.password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        setError(result.error)
+        return
+      }
+
+      if (result?.ok) {
+        router.push('/')
+        router.refresh()
+      }
+    } catch (error) {
+      console.error('로그인 오류:', error)
+      setError('로그인 중 오류가 발생했습니다.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -54,19 +91,41 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <Label htmlFor="username" className="font-semibold">
                 아이디
               </Label>
-              <Input id="username" type="text" placeholder="아이디를 입력하세요" className="rounded-xl h-12" />
+              <Input 
+                id="username" 
+                type="text" 
+                placeholder="아이디를 입력하세요" 
+                className="rounded-xl h-12"
+                value={formData.username}
+                onChange={handleInputChange("username")}
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password" className="font-semibold">
                 비밀번호
               </Label>
-              <Input id="password" type="password" placeholder="비밀번호를 입력하세요" className="rounded-xl h-12" />
+              <Input 
+                id="password" 
+                type="password" 
+                placeholder="비밀번호를 입력하세요" 
+                className="rounded-xl h-12"
+                value={formData.password}
+                onChange={handleInputChange("password")}
+                disabled={isLoading}
+              />
             </div>
 
             <div className="flex items-center text-sm">
@@ -80,9 +139,10 @@ export default function LoginPage() {
               type="submit"
               className="w-full bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-semibold rounded-2xl"
               size="lg"
+              disabled={isLoading}
               style={{ height: "48px" }}
             >
-              로그인
+              {isLoading ? "로그인 중..." : "로그인"}
             </Button>
           </form>
 
@@ -100,6 +160,7 @@ export default function LoginPage() {
               <Button
                 type="button"
                 onClick={handleKakaoLogin}
+                disabled={isLoading}
                 className="w-full bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] font-semibold rounded-2xl"
                 size="lg"
                 style={{ height: "48px" }}
@@ -113,6 +174,7 @@ export default function LoginPage() {
               <Button
                 type="button"
                 onClick={handleGoogleLogin}
+                disabled={isLoading}
                 variant="outline"
                 className="w-full border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold rounded-2xl bg-transparent"
                 size="lg"

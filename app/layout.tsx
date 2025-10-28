@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Suspense } from "react"
 import { CampaignProvider } from "@/lib/campaign-store"
 import { ConditionalBottomNavigation } from "@/components/conditional-bottom-navigation"
+import { Providers } from "./providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -34,10 +35,12 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        <CampaignProvider>
-          <Suspense fallback={null}>{children}</Suspense>
-          <ConditionalBottomNavigation />
-        </CampaignProvider>
+        <Providers>
+          <CampaignProvider>
+            <Suspense fallback={null}>{children}</Suspense>
+            <ConditionalBottomNavigation />
+          </CampaignProvider>
+        </Providers>
       </body>
     </html>
   )
