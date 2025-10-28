@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { TopHeader } from "@/components/top-header"
+import { signOut } from "next-auth/react"  // ✅ 추가
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -366,9 +367,16 @@ export default function ProfilePage() {
     return statusOptions.find((opt) => opt.value === status)?.color || "bg-[#7b68ee] text-white"
   }
 
-  const handleLogout = () => {
-    router.push("/")
+ const handleLogout = async () => {
+  try {
+    await signOut({ 
+      callbackUrl: '/',
+      redirect: true 
+    })
+  } catch (error) {
+    console.error('로그아웃 오류:', error)
   }
+}
 
   const handleApplicantManagement = (campaignId: number) => {
     setSelectedCampaignId(campaignId)
@@ -445,9 +453,9 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <h2 className={`text-base font-semibold ${username ? "text-gray-900" : "text-gray-400"}`}>
-                      {username || "프로필을 완성하세요"}
-                    </h2>
+                    <h2 className={`text-xl font-bold ${username ? "text-gray-900" : "text-gray-400"}`}>
+  {isProfileComplete ? (username || "프로필 변경하기") : "프로필을 완성하세요"}
+</h2>
                     {instagramVerificationStatus === "verified" && (
                       <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
                         <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
@@ -824,9 +832,9 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <h2 className={`text-base font-semibold ${username ? "text-gray-900" : "text-gray-400"}`}>
-                    {username || "프로필을 완성하세요"}
-                  </h2>
+                  <h2 className={`text-xl font-bold ${username ? "text-gray-900" : "text-gray-400"}`}>
+  {isProfileComplete ? (username || "프로필 변경하기") : "프로필을 완성하세요"}
+</h2>
                   {instagramVerificationStatus === "verified" && (
                     <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
                       <Check className="w-2.5 h-2.5 text-white stroke-[3]" />

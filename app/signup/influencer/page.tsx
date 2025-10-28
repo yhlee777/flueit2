@@ -61,15 +61,38 @@ export default function InfluencerSignupPage() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!isFormValid) return
-    
-    // 회원가입 로직
-    console.log("인플루언서 회원가입:", formData)
-    localStorage.setItem("is_logged_in", "true")
-    router.push("/")
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault()
+  if (!isFormValid) return
+  
+  try {
+    const response = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+        userType: 'influencer', // 또는 'advertiser'
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      alert(data.error || '회원가입에 실패했습니다.')
+      return
+    }
+
+    alert('회원가입이 완료되었습니다!')
+    router.push('/login') // 로그인 페이지로 이동
+  } catch (error) {
+    console.error('회원가입 오류:', error)
+    alert('회원가입 중 오류가 발생했습니다.')
   }
+}
 
   return (
     <div className="min-h-screen bg-white flex flex-col">

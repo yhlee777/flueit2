@@ -1,826 +1,505 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { useCampaigns } from "@/lib/campaign-store"
-import { useViewHistory } from "@/lib/view-history-store"
-import { useChatStore } from "@/lib/chat-store"
-import { useApplicationStore } from "@/lib/application-store"
+import { useState, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Drawer, DrawerContent } from "@/components/ui/drawer"
 import { Textarea } from "@/components/ui/textarea"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChevronLeft, MoreVertical, MapPin, Home, Heart, Check, CheckCircle, PenTool, X } from "lucide-react"
-import Link from "next/link"
-import { notFound, usePathname } from "next/navigation"
-import ProfileCard from "@/components/profile-card"
+import { ChevronLeft, MapPin, Calendar, Users, Eye, Heart, MessageCircle } from "lucide-react"
+import Image from "next/image"
 
-export default function CampaignDetailPage({ params }: { params: { id: string } }) {
-  const { getCampaignById } = useCampaigns()
-  const { addViewedCampaign } = useViewHistory()
-  const { addChat } = useChatStore()
-  const { addApplication } = useApplicationStore()
-  const [currentImageSlide, setCurrentImageSlide] = useState(0)
-  const imageScrollRef = useRef<HTMLDivElement>(null)
-  const pathname = usePathname()
+interface Campaign {
+  id: string
+  user_id: string
+  title: string
+  category: string
+  status: string
+  recruit_type: string
+  recruit_count: number
+  applicants: number
+  confirmed_applicants: number
+  visit_type: string
+  reward_type: string
+  payment_amount: string | null
+  product_name: string | null
+  other_reward: string | null
+  additional_reward_info: string | null
+  is_deal_possible: boolean
+  negotiation_option: string | null
+  content_type: string | null
+  video_duration: string | null
+  required_content: string | null
+  required_scenes: string | null
+  hashtags: string[]
+  link_url: string | null
+  additional_memo: string | null
+  uploaded_photos: string[]
+  thumbnail: string | null
+  views: number
+  likes: number
+  comments: number
+  created_at: string
+  updated_at: string
+}
 
-  const [isInfluencerMode, setIsInfluencerMode] = useState(false)
-  const [isProfileComplete, setIsProfileComplete] = useState(true)
-  const [isFavorite, setIsFavorite] = useState(false)
-  const [showProposalModal, setShowProposalModal] = useState(false)
-  const [proposalText, setProposalText] = useState("")
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
+export default function CampaignDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const { data: session } = useSession()
+  const campaignId = params.id as string
 
-  const [influencerProfileData, setInfluencerProfileData] = useState({
-    name: "밍밍 부인",
-    avatar: "/korean-business-person.jpg",
-    verified: true,
-    category: "뷰티·화장품",
-    followers: "125K",
-    engagement: "4.2%",
-    region: "서울시 강남구",
-    trustScore: 4.8,
-    hashtags: ["#뷰티", "#스킨케어", "#체험단"],
-  })
+  const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [isApplying, setIsApplying] = useState(false)
+  const [showApplyModal, setShowApplyModal] = useState(false)
+  const [applicationMessage, setApplicationMessage] = useState("")
+  const [hasApplied, setHasApplied] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
 
-  const campaignData = getCampaignById(Number.parseInt(params.id))
-
-  const images =
-    campaignData?.images && campaignData.images.length > 0
-      ? campaignData.images
-      : [campaignData?.thumbnail || "/campaign-image.jpg"]
-
+  // 캠페인 데이터 로드
   useEffect(() => {
-    const influencerMode = localStorage.getItem("influencer_mode") === "true"
-    setIsInfluencerMode(influencerMode)
-    console.log("[v0] Influencer mode:", influencerMode)
+    if (!campaignId) return
 
-    if (influencerMode) {
-      const avatar = localStorage.getItem("user_avatar")
-      const name = localStorage.getItem("username")
-      const bio = localStorage.getItem("influencer_bio")
-      const instagram = localStorage.getItem("influencer_instagram_id")
-      const category = localStorage.getItem("influencer_category")
-      const hashtagsStr = localStorage.getItem("influencer_profile_hashtags")
-
-      let hashtags: string[] = []
+    const fetchCampaign = async () => {
       try {
-        hashtags = hashtagsStr ? JSON.parse(hashtagsStr) : []
-      } catch (e) {
-        hashtags = []
-      }
+        setLoading(true)
+        console.log("🔍 캠페인 조회 시작:", campaignId)
 
-      const profileData = {
-        hasAvatar: avatar !== null && avatar !== "" && avatar !== "null",
-        hasName: name !== null && name !== "" && name !== "null",
-        hasBio: bio !== null && bio !== "" && bio !== "null",
-        hasInstagram: instagram !== null && instagram !== "" && instagram !== "null",
-        hasCategory: category !== null && category !== "" && category !== "null",
-        hasHashtags: hashtags.length > 0,
-      }
+        const response = await fetch(`/api/campaigns/${campaignId}`)
+        const data = await response.json()
 
-      const isComplete =
-        profileData.hasAvatar &&
-        profileData.hasName &&
-        profileData.hasBio &&
-        profileData.hasInstagram &&
-        profileData.hasCategory &&
-        profileData.hasHashtags
-      setIsProfileComplete(isComplete)
-      console.log("[v0] Profile complete:", isComplete)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handleFocus = () => {
-      const influencerMode = localStorage.getItem("influencer_mode") === "true"
-      if (influencerMode) {
-        const avatar = localStorage.getItem("user_avatar")
-        const name = localStorage.getItem("username")
-        const bio = localStorage.getItem("influencer_bio")
-        const instagram = localStorage.getItem("influencer_instagram_id")
-        const category = localStorage.getItem("influencer_category")
-        const hashtagsStr = localStorage.getItem("influencer_profile_hashtags")
-
-        let hashtags: string[] = []
-        try {
-          hashtags = hashtagsStr ? JSON.parse(hashtagsStr) : []
-        } catch (e) {
-          hashtags = []
+        if (!response.ok) {
+          console.error("❌ API 오류:", data)
+          alert(data.error || "캠페인을 불러오는데 실패했습니다.")
+          router.push("/campaigns")
+          return
         }
 
-        const profileData = {
-          hasAvatar: avatar !== null && avatar !== "" && avatar !== "null",
-          hasName: name !== null && name !== "" && name !== "null",
-          hasBio: bio !== null && bio !== "" && bio !== "null",
-          hasInstagram: instagram !== null && instagram !== "" && instagram !== "null",
-          hasCategory: category !== null && category !== "" && category !== "null",
-          hasHashtags: hashtags.length > 0,
+        console.log("✅ 캠페인 데이터:", data.campaign)
+        setCampaign(data.campaign)
+
+        // 본인 캠페인 여부 확인
+        if (session?.user?.id) {
+          setIsOwner(data.campaign.user_id === session.user.id)
         }
 
-        const isComplete =
-          profileData.hasAvatar &&
-          profileData.hasName &&
-          profileData.hasBio &&
-          profileData.hasInstagram &&
-          profileData.hasCategory &&
-          profileData.hasHashtags
-        setIsProfileComplete(isComplete)
-        console.log("[v0] Profile complete (on focus):", isComplete)
+        // 이미 지원했는지 확인
+        if (data.applications && session?.user?.id) {
+          const userApplication = data.applications.find(
+            (app: any) => app.influencer_id === session.user.id
+          )
+          setHasApplied(!!userApplication)
+        }
+      } catch (error) {
+        console.error("❌ 캠페인 조회 오류:", error)
+        alert("캠페인을 불러오는데 실패했습니다.")
+        router.push("/campaigns")
+      } finally {
+        setLoading(false)
       }
     }
 
-    window.addEventListener("focus", handleFocus)
-    return () => window.removeEventListener("focus", handleFocus)
-  }, [])
+    fetchCampaign()
+  }, [campaignId, session, router])
 
-  useEffect(() => {
-    const savedProposal = localStorage.getItem("influencer_proposal")
-    console.log("[v0] Loading saved proposal from localStorage:", savedProposal)
-    if (savedProposal) {
-      setProposalText(savedProposal)
-      console.log("[v0] Proposal loaded successfully")
-    } else {
-      console.log("[v0] No saved proposal found")
+  // 지원하기
+  const handleApply = async () => {
+    if (!session) {
+      alert("로그인이 필요합니다.")
+      router.push("/login")
+      return
     }
 
-    const savedCategory = localStorage.getItem("influencer_category")
-    if (savedCategory) {
-      setInfluencerProfileData((prev) => ({
-        ...prev,
-        category: savedCategory,
-      }))
-    }
-  }, [])
-
-  useEffect(() => {
-    if (showProposalModal) {
-      const savedProposal = localStorage.getItem("influencer_proposal")
-      console.log("[v0] Reloading proposal when modal opens:", savedProposal)
-      if (savedProposal) {
-        setProposalText(savedProposal)
-        console.log("[v0] Proposal reloaded successfully in modal")
-      }
-    }
-  }, [showProposalModal])
-
-  useEffect(() => {
-    if (isInfluencerMode && campaignData) {
-      addViewedCampaign({
-        id: campaignData.id,
-        title: campaignData.title,
-        location: campaignData.location,
-        reward: campaignData.reward,
-        thumbnail: campaignData.thumbnail,
-        category: campaignData.category,
-        company: campaignData.company,
-        visitType: campaignData.visitType,
-      })
-      console.log("[v0] Added campaign to view history:", campaignData.id)
-    }
-  }, [campaignData, addViewedCampaign])
-
-  useEffect(() => {
-    if (isInfluencerMode && campaignData) {
-      const savedFavorites = localStorage.getItem("campaign-favorites")
-      console.log("[v0] Loading saved favorites:", savedFavorites)
-      if (savedFavorites) {
-        const favorites = JSON.parse(savedFavorites)
-        const isFav = favorites.includes(campaignData.id)
-        setIsFavorite(isFav)
-        console.log("[v0] Campaign", campaignData.id, "is favorite:", isFav)
-      }
-    }
-  }, [isInfluencerMode, campaignData])
-
-  useEffect(() => {
-    const imageScrollContainer = imageScrollRef.current
-    if (!imageScrollContainer) return
-
-    const handleImageScroll = () => {
-      const scrollLeft = imageScrollContainer.scrollLeft
-      const imageWidth = imageScrollContainer.scrollWidth / images.length
-      const currentIndex = Math.round(scrollLeft / imageWidth)
-      setCurrentImageSlide(currentIndex)
+    if (isOwner) {
+      alert("본인의 캠페인에는 지원할 수 없습니다.")
+      return
     }
 
-    imageScrollContainer.addEventListener("scroll", handleImageScroll)
-    return () => imageScrollContainer.removeEventListener("scroll", handleImageScroll)
-  }, [images.length])
+    if (hasApplied) {
+      alert("이미 지원한 캠페인입니다.")
+      return
+    }
 
-  if (!campaignData) {
-    notFound()
+    setShowApplyModal(true)
   }
 
-  const toggleFavorite = () => {
-    const savedFavorites = localStorage.getItem("campaign-favorites")
-    const favorites = savedFavorites ? JSON.parse(savedFavorites) : []
+  // 지원 제출
+  const handleSubmitApplication = async () => {
+    try {
+      setIsApplying(true)
+      console.log("🔍 캠페인 지원 시작:", campaignId)
 
-    let newFavorites
-    if (favorites.includes(campaignData.id)) {
-      newFavorites = favorites.filter((id: number) => id !== campaignData.id)
-      setIsFavorite(false)
-      console.log("[v0] Removed from favorites:", campaignData.id)
-    } else {
-      newFavorites = [...favorites, campaignData.id]
-      setIsFavorite(true)
-      console.log("[v0] Added to favorites:", campaignData.id)
-    }
-
-    localStorage.setItem("campaign-favorites", JSON.stringify(newFavorites))
-    console.log("[v0] Updated favorites:", newFavorites)
-  }
-
-  const handleApply = () => {
-    console.log("[v0] Apply button clicked for campaign:", campaignData.id)
-    const savedProposal = localStorage.getItem("influencer_proposal")
-    console.log("[v0] Reloading proposal for modal:", savedProposal)
-    if (savedProposal) {
-      setProposalText(savedProposal)
-    }
-    setShowProposalModal(true)
-  }
-
-  const handleSubmitProposal = () => {
-    console.log("[v0] Submitting proposal for campaign:", campaignData.id)
-
-    const chatId = addChat({
-      campaignId: campaignData.id,
-      campaignTitle: campaignData.title,
-      influencerId: 1,
-      influencerName: "나",
-      influencerAvatar: "/placeholder.svg",
-      advertiserId: campaignData.advertiserId || 1,
-      advertiserName: campaignData.company || "광고주",
-      advertiserAvatar: "/placeholder.svg",
-      lastMessage: "제안서를 보냈습니다",
-      time: "방금 전",
-      unreadCount: 0,
-      isUnread: false,
-      isActiveCollaboration: false,
-      initiatedBy: "influencer",
-      status: "pending",
-      messages: [
-        {
-          id: 1,
-          senderId: 1,
-          senderType: "influencer",
-          content: proposalText,
-          timestamp: new Date().toISOString(),
-          type: "proposal",
+      const response = await fetch(`/api/campaigns/${campaignId}/applications`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      ],
-    })
+        body: JSON.stringify({
+          message: applicationMessage,
+        }),
+      })
 
-    addApplication({
-      campaignId: campaignData.id,
-      applicationStatus: "지원 완료",
-      campaignStatus: "구인 진행중",
-      campaignStatusColor: "bg-[#03C75A]",
-      title: campaignData.title,
-      advertiser: campaignData.company || "광고주",
-      appliedTime: "방금 전",
-      proposalText: proposalText,
-    })
+      const data = await response.json()
 
-    console.log("[v0] Created chat", chatId, "with status: pending (hidden from influencer until accepted)")
-    alert("캠페인 지원이 완료되었습니다! 광고주가 수락하면 채팅방이 생성됩니다.")
-    setShowProposalModal(false)
-  }
+      if (!response.ok) {
+        console.error("❌ 지원 실패:", data)
+        alert(data.error || "지원에 실패했습니다.")
+        return
+      }
 
-  const handlePreview = () => {
-    setShowProposalModal(false)
-    setShowPreviewModal(true)
-  }
+      console.log("✅ 지원 성공:", data)
+      alert("캠페인에 성공적으로 지원되었습니다!")
+      setShowApplyModal(false)
+      setApplicationMessage("")
+      setHasApplied(true)
 
-  const handleBackToProposal = () => {
-    setShowPreviewModal(false)
-    setShowProposalModal(true)
-  }
-
-  const getNegotiationText = () => {
-    if (campaignData.negotiationOption === "yes") {
-      return "협의 가능"
-    } else if (campaignData.negotiationOption === "no") {
-      return "협의 불가"
+      // 캠페인 데이터 다시 로드
+      window.location.reload()
+    } catch (error) {
+      console.error("❌ 지원 오류:", error)
+      alert("지원 중 오류가 발생했습니다.")
+    } finally {
+      setIsApplying(false)
     }
-    return "딜 가능"
+  }
+
+  // 수정하기
+  const handleEdit = () => {
+    router.push(`/campaigns/${campaignId}/edit`)
+  }
+
+  // 삭제하기
+  const handleDelete = async () => {
+    if (!confirm("정말 이 캠페인을 삭제하시겠습니까?")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        alert(data.error || "삭제에 실패했습니다.")
+        return
+      }
+
+      alert("캠페인이 삭제되었습니다.")
+      router.push("/campaigns")
+    } catch (error) {
+      console.error("❌ 삭제 오류:", error)
+      alert("삭제 중 오류가 발생했습니다.")
+    }
+  }
+
+  // 신청자 관리
+  const handleManageApplicants = () => {
+    router.push(`/campaigns/${campaignId}/applicants`)
+  }
+
+  // 리워드 텍스트 생성
+  const getRewardText = () => {
+    if (!campaign) return ""
+
+    if (campaign.reward_type === "payment") {
+      if (campaign.payment_amount === "인플루언서와 직접 협의") {
+        return "💰 협의 후 결정"
+      }
+      return `💰 ${campaign.payment_amount}만원`
+    } else if (campaign.reward_type === "product") {
+      return `🎁 ${campaign.product_name || "제품 제공"}`
+    } else if (campaign.reward_type === "other") {
+      return `✨ ${campaign.other_reward || "기타 보상"}`
+    }
+    return "협의 후 결정"
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7b68ee] mx-auto mb-4"></div>
+          <p className="text-gray-500">캠페인을 불러오는 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!campaign) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">캠페인을 찾을 수 없습니다.</p>
+          <Button onClick={() => router.push("/campaigns")}>목록으로 돌아가기</Button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-white pb-20">
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100">
-        <div className="flex items-center justify-between px-4 py-1.5">
-          <Link href="/campaigns">
-            <Button variant="ghost" className="flex items-center h-9 px-2">
-              <ChevronLeft className="w-6 h-6 text-gray-600" />
-            </Button>
-          </Link>
-
-          <div></div>
-
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <MoreVertical className="w-5 h-5 text-gray-600" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <main className="space-y-4">
-        <div className="relative">
-          <div
-            ref={imageScrollRef}
-            className="flex overflow-x-auto scrollbar-hide rounded-b-3xl overflow-hidden"
-            style={{
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-              scrollSnapType: "x mandatory",
-            }}
-          >
-            {images.map((image, index) => (
-              <div key={index} className="min-w-full w-full h-64 flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
-                <img
-                  src={image || "/placeholder.svg?height=256&width=400&query=campaign image"}
-                  alt={`캠페인 이미지 ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-
-          {images.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
-              {images.map((_, index) => (
-                <button
-                  key={index}
-                  className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                    index === currentImageSlide ? "bg-white w-6" : "bg-white/50"
-                  }`}
-                  onClick={() => {
-                    const imageScrollContainer = imageScrollRef.current
-                    if (imageScrollContainer) {
-                      const imageWidth = imageScrollContainer.scrollWidth / images.length
-                      imageScrollContainer.scrollTo({
-                        left: index * imageWidth,
-                        behavior: "smooth",
-                      })
-                    }
-                  }}
-                />
-              ))}
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between h-14 px-4">
+          <Button variant="ghost" className="flex items-center h-9 px-1" onClick={() => router.back()}>
+            <ChevronLeft className="w-6 h-6 text-gray-600" />
+            <span className="text-base text-gray-600">캠페인 상세</span>
+          </Button>
+          {isOwner && (
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={handleEdit} className="text-sm">
+                수정
+              </Button>
+              <Button variant="ghost" onClick={handleDelete} className="text-sm text-red-500">
+                삭제
+              </Button>
             </div>
           )}
         </div>
+      </div>
 
-        <div className="px-4">
-          <div className="flex gap-2 flex-wrap">
-            <span className="bg-gray-100 text-gray-600 font-medium text-xs px-2 py-1 rounded">
-              {campaignData.visitType === "visit" ? "방문형" : "비방문형"}
+      {/* Main Content */}
+      <div className="pb-24">
+        {/* 이미지 갤러리 */}
+        {campaign.uploaded_photos && campaign.uploaded_photos.length > 0 ? (
+          <div className="relative aspect-video bg-gray-100">
+            <Image
+              src={campaign.uploaded_photos[0] || "/placeholder.svg"}
+              alt={campaign.title}
+              fill
+              className="object-cover"
+            />
+          </div>
+        ) : (
+          <div className="relative aspect-video bg-gray-100 flex items-center justify-center">
+            <div className="text-center text-gray-400">
+              <svg className="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21,15 16,10 5,21" />
+              </svg>
+              <p className="text-sm">이미지 없음</p>
+            </div>
+          </div>
+        )}
+
+        {/* 상태 배지 */}
+        <div className="px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                campaign.status === "구인 진행 중"
+                  ? "bg-green-100 text-green-700"
+                  : campaign.status === "구인 마감"
+                  ? "bg-gray-100 text-gray-700"
+                  : "bg-red-100 text-red-700"
+              }`}
+            >
+              {campaign.status}
             </span>
-
-            <span className="bg-[#7b68ee]/10 text-[#7b68ee] font-medium text-xs px-2 py-1 rounded">
-              {campaignData.category}
+            <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+              {campaign.category}
             </span>
-
-            {campaignData.contentType && (
-              <span className="bg-[#7b68ee]/10 text-[#7b68ee] font-medium text-xs px-2 py-1 rounded">
-                {campaignData.contentType === "릴스+피드" ? "릴스+게시물" : campaignData.contentType}
+            {campaign.visit_type && (
+              <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                {campaign.visit_type === "visit" ? "방문형" : "배송형"}
               </span>
             )}
           </div>
         </div>
 
-        <div className="px-4 space-y-4">
-          <div className="space-y-3">
-            <h2 className="text-xl font-bold text-black leading-tight">{campaignData.title}</h2>
+        {/* 기본 정보 */}
+        <div className="px-4 py-4">
+          <h1 className="text-xl font-bold text-gray-900 mb-3">{campaign.title}</h1>
 
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span>{campaignData.company || "브랜드"}</span>
-              <span>•</span>
-              <span>{campaignData.timeAgo}</span>
-            </div>
-
-            {campaignData.visitType === "visit" && campaignData.location && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <MapPin className="w-4 h-4 text-[#51a66f]" />
-                <span>{campaignData.location}</span>
-              </div>
+          {/* 리워드 */}
+          <div className="mb-4">
+            <p className="text-lg font-semibold text-[#7b68ee]">{getRewardText()}</p>
+            {campaign.additional_reward_info && (
+              <p className="text-sm text-gray-600 mt-1">{campaign.additional_reward_info}</p>
             )}
+          </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-black">{campaignData.reward}</span>
-                <div className="px-2 py-1 bg-white rounded-full">
-                  <span className="text-xs text-gray-600">{getNegotiationText()}</span>
-                </div>
+          {/* 통계 */}
+          <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+            <div className="flex items-center gap-1">
+              <Eye className="w-4 h-4" />
+              <span>{campaign.views || 0}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Users className="w-4 h-4" />
+              <span>
+                {campaign.applicants || 0}/{campaign.recruit_count}명
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Calendar className="w-4 h-4" />
+              <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+
+          {/* 모집 정보 */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">📋 모집 정보</h3>
+            <div className="space-y-2 text-sm text-gray-700">
+              <div className="flex justify-between">
+                <span className="text-gray-500">모집 인원</span>
+                <span className="font-medium">{campaign.recruit_count}명</span>
               </div>
-              {campaignData.recruitCount && (
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-gray-600">
-                    <span className="text-[#7b68ee] font-semibold">{campaignData.applicants || 0}</span>/
-                    {campaignData.recruitCount} 명 모집중
-                  </p>
-                  {campaignData.confirmedApplicants &&
-                    campaignData.recruitCount &&
-                    campaignData.confirmedApplicants / campaignData.recruitCount >= 0.7 && (
-                      <span className="bg-orange-500/10 text-orange-500 text-xs px-2 py-1 rounded font-medium">
-                        마감 임박
-                      </span>
-                    )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">현재 신청자</span>
+                <span className="font-medium text-[#7b68ee]">{campaign.applicants || 0}명</span>
+              </div>
+              {campaign.confirmed_applicants > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">확정된 인원</span>
+                  <span className="font-medium text-green-600">{campaign.confirmed_applicants}명</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
-            <p className="text-sm font-medium text-gray-700">{campaignData.applicants || 0}명의 지원자가 있어요.</p>
-            <p className="text-sm text-gray-500">이 중 {campaignData.viewedApplicants || 0}명의 지원서를 확인했어요.</p>
-            {campaignData.recruitCount && (
-              <div className="pt-2 mt-2 border-t border-gray-200">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-gray-700">
-                    <span className="font-medium text-[#7b68ee]">{campaignData.recruitCount}명 모집</span> 중{" "}
-                    <span className="font-medium text-[#7b68ee]">{campaignData.confirmedApplicants || 0}명 확정</span>,{" "}
-                    <span className="font-medium text-gray-900">
-                      {campaignData.recruitCount - (campaignData.confirmedApplicants || 0)}명 남음
-                    </span>
-                  </p>
-                  {campaignData.confirmedApplicants &&
-                    campaignData.recruitCount &&
-                    campaignData.confirmedApplicants / campaignData.recruitCount >= 0.7 && (
-                      <span className="bg-orange-500/10 text-orange-500 text-xs px-2 py-1 rounded font-medium">
-                        마감 임박
-                      </span>
-                    )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-6 pt-2">
-            <h3 className="text-lg font-semibold text-black">캠페인 상세</h3>
-
-            {campaignData.visitType && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-3">캠페인 유형</h4>
-                <div className="flex items-center gap-2">
-                  {campaignData.visitType === "visit" ? (
-                    <>
-                      <MapPin className="w-4 h-4 text-[#51a66f]" />
-                      <span className="text-sm text-gray-700">방문형 캠페인</span>
-                    </>
-                  ) : (
-                    <>
-                      <Home className="w-4 h-4 text-[#51a66f]" />
-                      <span className="text-sm text-gray-700">비방문형 캠페인</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {(campaignData.contentType || campaignData.videoDuration) && (
-              <div className="pb-6 border-b border-gray-200 space-y-4">
-                {campaignData.contentType && (
-                  <div>
-                    <h4 className="font-medium text-black mb-2">콘텐츠 유형</h4>
-                    <span className="inline-block px-3 py-1 bg-white text-[#7b68ee] rounded-full text-sm border border-[#7b68ee]">
-                      {campaignData.contentType}
-                    </span>
-                    {campaignData.videoDuration &&
-                      (campaignData.contentType === "릴스" || campaignData.contentType === "릴스+피드") && (
-                        <span className="inline-block px-3 py-1 bg-white text-[#7b68ee] rounded-full text-sm ml-2 border border-[#7b68ee]">
-                          릴스 {campaignData.videoDuration}
-                        </span>
-                      )}
+          {/* 콘텐츠 요구사항 */}
+          {(campaign.content_type || campaign.video_duration) && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">🎥 콘텐츠 요구사항</h3>
+              <div className="space-y-2 text-sm text-gray-700">
+                {campaign.content_type && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[#7b68ee]">•</span>
+                    <span>콘텐츠 유형: {campaign.content_type}</span>
+                  </div>
+                )}
+                {campaign.video_duration && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[#7b68ee]">•</span>
+                    <span>영상 길이: {campaign.video_duration}</span>
                   </div>
                 )}
               </div>
-            )}
-
-            {campaignData.rewardType && (
-              <div className="pb-6 border-b border-gray-200 space-y-3">
-                <h4 className="font-medium text-black mb-3">제공 내역</h4>
-
-                {campaignData.rewardType === "payment" && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700">
-                        {campaignData.paymentAmount === "인플루언서와 직접 협의"
-                          ? "협의 후 결정"
-                          : `${campaignData.paymentAmount}만원`}
-                      </span>
-                      {campaignData.isDealPossible && (
-                        <span className="px-2 py-1 bg-white text-[#7b68ee] rounded-full text-xs border border-[#7b68ee]">
-                          딜 가능
-                        </span>
-                      )}
-                    </div>
-                    {campaignData.additionalRewardInfo && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">추가 정보</p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.additionalRewardInfo}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {campaignData.rewardType === "product" && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-700">{campaignData.productName}</p>
-                    {campaignData.additionalRewardInfo && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">추가 정보</p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.additionalRewardInfo}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {campaignData.rewardType === "other" && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-700">{campaignData.otherReward || campaignData.reward}</p>
-                    {campaignData.additionalRewardInfo && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">추가 정보</p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.additionalRewardInfo}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="pb-6 border-b border-gray-200">
-              <h4 className="font-medium text-black mb-2">📄 캠페인 설명</h4>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {campaignData.description || campaignData.campaignDetails || "캠페인 상세 정보가 없습니다."}
-              </p>
             </div>
+          )}
 
-            {campaignData.requiredContent && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-2">📝 콘텐츠에 포함할 내용</h4>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.requiredContent}</p>
-              </div>
-            )}
+          {/* 필수 포함 내용 */}
+          {campaign.required_content && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">📝 필수 포함 내용</h3>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.required_content}</p>
+            </div>
+          )}
 
-            {campaignData.requiredScenes && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-2">🎬 촬영 시 포함할 장면</h4>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.requiredScenes}</p>
-              </div>
-            )}
+          {/* 필수 촬영 장면 */}
+          {campaign.required_scenes && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">📸 필수 촬영 장면</h3>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.required_scenes}</p>
+            </div>
+          )}
 
-            {campaignData.hashtags && campaignData.hashtags.length > 0 && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-3">해시태그</h4>
-                <p className="text-xs text-gray-500 mb-3">캠페인에 필수로 들어가야할 해시태그에요.</p>
-                <div className="flex flex-wrap gap-2">
-                  {campaignData.hashtags.map((hashtag, index) => (
-                    <span
-                      key={index}
-                      className="inline-block px-2 py-1 bg-blue-100 text-blue-600 rounded-full text-sm border border-blue-200"
-                    >
-                      {hashtag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* 추가 메모 */}
+          {campaign.additional_memo && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">💬 추가 메모</h3>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.additional_memo}</p>
+            </div>
+          )}
 
-            {campaignData.linkUrl && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-2">관련 링크</h4>
-                <a
-                  href={campaignData.linkUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block px-4 py-2 bg-[#7b68ee] text-white rounded-lg text-sm hover:bg-[#7b68ee]/90 transition-colors"
-                >
-                  링크 보기
-                </a>
+          {/* 해시태그 */}
+          {campaign.hashtags && campaign.hashtags.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">#️⃣ 해시태그</h3>
+              <div className="flex flex-wrap gap-2">
+                {campaign.hashtags.map((tag, index) => (
+                  <span key={index} className="px-3 py-1 bg-[#7b68ee]/10 text-[#7b68ee] rounded-full text-sm">
+                    {tag}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {campaignData.additionalMemo && campaignData.additionalMemo !== campaignData.description && (
-              <div className="pb-6 border-b border-gray-200">
-                <h4 className="font-medium text-black mb-2">추가 메모</h4>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaignData.additionalMemo}</p>
-              </div>
-            )}
-          </div>
+          {/* 링크 */}
+          {campaign.link_url && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">🔗 관련 링크</h3>
+              <a
+                href={campaign.link_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:underline break-all"
+              >
+                {campaign.link_url}
+              </a>
+            </div>
+          )}
         </div>
-      </main>
+      </div>
 
-      {isInfluencerMode && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-          <div className="flex gap-3 max-w-md mx-auto px-4 py-4">
+      {/* Bottom Action Buttons */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-50">
+        {isOwner ? (
+          <div className="flex gap-3">
             <Button
-              variant="outline"
-              size="lg"
-              className="flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-gray-200 hover:border-[#7b68ee] transition-colors bg-transparent"
-              onClick={toggleFavorite}
+              onClick={handleManageApplicants}
+              className="flex-1 h-12 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-medium"
             >
-              <Heart
-                className={`w-6 h-6 transition-colors ${isFavorite ? "text-red-500 fill-red-500" : "text-gray-600"}`}
+              신청자 관리 ({campaign.applicants || 0}명)
+            </Button>
+            <Button onClick={handleEdit} variant="outline" className="h-12 px-6">
+              수정
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={handleApply}
+            disabled={hasApplied || campaign.status !== "구인 진행 중"}
+            className="w-full h-12 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {hasApplied ? "이미 지원한 캠페인입니다" : campaign.status === "구인 진행 중" ? "지원하기" : "모집이 마감되었습니다"}
+          </Button>
+        )}
+      </div>
+
+      {/* 지원하기 모달 */}
+      {showApplyModal && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">캠페인 지원하기</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">지원 메시지 (선택)</label>
+              <Textarea
+                placeholder="자신을 소개하거나 지원 동기를 작성해주세요."
+                value={applicationMessage}
+                onChange={(e) => setApplicationMessage(e.target.value)}
+                rows={5}
+                className="w-full"
               />
-            </Button>
-
-            <Button
-              size="lg"
-              className="flex-1 h-14 rounded-2xl bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-semibold text-base shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed"
-              onClick={handleApply}
-              disabled={!isProfileComplete}
-            >
-              {isProfileComplete ? "캠페인 지원하기" : "프로필 완성 후 지원 가능"}
-            </Button>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowApplyModal(false)
+                  setApplicationMessage("")
+                }}
+                className="flex-1"
+                disabled={isApplying}
+              >
+                취소
+              </Button>
+              <Button
+                onClick={handleSubmitApplication}
+                disabled={isApplying}
+                className="flex-1 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white"
+              >
+                {isApplying ? "지원 중..." : "지원하기"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
-
-      <Drawer open={showProposalModal} onOpenChange={setShowProposalModal}>
-        <DrawerContent className="rounded-t-3xl [&>div:first-child]:hidden max-h-[95vh] flex flex-col">
-          <div className="flex justify-center pt-4 pb-2">
-            <div className="w-12 h-1 bg-gray-300 rounded-full" />
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold text-lg mb-1 text-left">제안서</h3>
-                <p className="text-sm text-gray-500 mb-3">
-                  지금이 바로 당신의 매력을 보여줄 순간이에요! 브랜드가 "이 사람이다" 하고 느낄 수 있게, 당신만의 콘텐츠
-                  스타일과 협업 강점을 자유롭게 소개해보세요.
-                </p>
-                <Textarea
-                  value={proposalText}
-                  onChange={(e) => setProposalText(e.target.value)}
-                  placeholder="제안서 내용을 입력해주세요..."
-                  className="min-h-[200px] resize-none focus-visible:ring-[#7b68ee]"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-gray-200 px-4 pt-3 pb-6">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handlePreview} className="flex-[3] bg-transparent h-12">
-                미리보기
-              </Button>
-              <Button onClick={handleSubmitProposal} className="flex-[7] bg-[#7b68ee] hover:bg-[#7b68ee]/90 h-12">
-                제안하기
-              </Button>
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
-
-      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
-        <DialogContent
-          showCloseButton={false}
-          className="max-w-md w-full h-[90vh] p-0 gap-0 bg-white rounded-2xl overflow-hidden flex flex-col"
-        >
-          <button
-            onClick={() => {
-              setShowPreviewModal(false)
-              setShowProposalModal(true)
-            }}
-            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-
-          <div className="flex flex-col h-full overflow-hidden">
-            <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src="/placeholder.svg" alt="광고주 잇다" />
-                  <AvatarFallback>광</AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-base">광고주 잇다</h3>
-                    <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
-                      <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    인플루언서님이 제안했을때, 광고주님 시점으로 보는 화면이에요.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 bg-white border-b border-gray-100">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span
-                    className="text-xs font-semibold px-3 py-1.5 rounded-full border"
-                    style={{
-                      color: "#7b68ee",
-                      borderColor: "#7b68ee",
-                      backgroundColor: "rgba(123,104,238,0.12)",
-                    }}
-                  >
-                    {campaignData.status || "구인 진행중"}
-                  </span>
-                </div>
-                <div>
-                  <h2 className="text-xs font-medium text-gray-900 leading-tight">{campaignData.title}</h2>
-                  <p className="text-base font-semibold text-gray-900 mt-0.5">{campaignData.reward}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-3">
-                <button
-                  className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-black/10 text-[#7b68ee] flex items-center justify-center gap-1.5 hover:border-black/20 transition-all duration-150"
-                  style={{ minHeight: "36px" }}
-                  disabled
-                >
-                  <CheckCircle className="w-4 h-4 text-[#7b68ee] flex-shrink-0" />
-                  <span className="text-xs font-semibold truncate">협업 확정 요청</span>
-                </button>
-                <button
-                  className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold bg-white border border-black/10 text-[#7b68ee] flex items-center justify-center gap-1.5 hover:border-black/20 transition-all duration-150"
-                  style={{ minHeight: "36px" }}
-                  disabled
-                >
-                  <PenTool className="w-4 h-4 text-[#7b68ee] flex-shrink-0" />
-                  <span className="text-xs font-semibold truncate">후기 작성하기</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 py-4 bg-gray-50 space-y-4">
-              <div className="flex justify-start">
-                <ProfileCard influencer={influencerProfileData} />
-              </div>
-
-              {proposalText && (
-                <div className="flex justify-start items-end gap-2">
-                  <div className="bg-white text-gray-900 shadow-sm rounded-2xl rounded-tl-sm px-4 py-3 max-w-[75%]">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{proposalText}</p>
-                  </div>
-                  <p className="text-xs text-gray-400 pb-1">방금 전</p>
-                </div>
-              )}
-
-              {!proposalText && (
-                <div className="flex justify-start">
-                  <div className="bg-white text-gray-500 shadow-sm rounded-2xl px-4 py-3 max-w-[75%]">
-                    <p className="text-sm">제안서 내용을 입력하면 여기에 표시됩니다.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="px-4 py-3 border-t border-gray-100 bg-white space-y-3 pb-6">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-gray-500"
-                  >
-                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                  </svg>
-                </Button>
-                <div className="flex-1 bg-gray-100 rounded-full px-4 py-2.5">
-                  <input
-                    type="text"
-                    placeholder="메시지를 입력하세요..."
-                    className="w-full bg-transparent text-sm outline-none"
-                    disabled
-                  />
-                </div>
-                <Button size="icon" className="h-10 w-10 bg-[#7b68ee] hover:bg-[#7b68ee]/90 rounded-full flex-shrink-0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m22 2-7 20-4-9-9-4Z" />
-                    <path d="M22 2 11 13" />
-                  </svg>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

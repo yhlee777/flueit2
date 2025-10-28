@@ -73,6 +73,9 @@ export const authOptions: NextAuthOptions = {
           console.log('🔍 기존 사용자 조회:', { found: !!existingUser, selectError })
 
           if (existingUser) {
+            // ✅ 기존 사용자 - ID 설정
+            user.id = existingUser.id
+            
             const { error: updateError } = await supabaseAdmin
               .from('users')
               .update({
@@ -86,6 +89,7 @@ export const authOptions: NextAuthOptions = {
             
             console.log('🔍 사용자 업데이트:', { updateError })
           } else {
+            // ✅ 신규 사용자 생성
             const username = email.split('@')[0] + '_' + Math.random().toString(36).substr(2, 6)
             
             const { data: newUser, error: insertError } = await supabaseAdmin
@@ -97,6 +101,7 @@ export const authOptions: NextAuthOptions = {
                 image: user.image,
                 provider: account.provider,
                 provider_id: account.providerAccountId,
+                user_type: null, // 나중에 선택
               })
               .select()
               .single()
@@ -106,6 +111,11 @@ export const authOptions: NextAuthOptions = {
             if (insertError) {
               console.error('❌ 사용자 생성 실패:', insertError)
               return false
+            }
+            
+            // ✅ 중요: 신규 사용자 ID 설정
+            if (newUser) {
+              user.id = newUser.id
             }
           }
           
@@ -146,6 +156,8 @@ export const authOptions: NextAuthOptions = {
           session.user.email = user.email
           session.user.name = user.name || user.username
           session.user.image = user.image
+          // ✅ user_type 추가
+          session.user.userType = user.user_type
         }
       }
       

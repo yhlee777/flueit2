@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         email,
         username,
         password: hashedPassword,
-        user_type: userType || null,
+        user_type: userType.toUpperCase() || null,
         provider: null,
       })
       .select('id, email, username, user_type, created_at')

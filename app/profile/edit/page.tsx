@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { TopHeader } from "@/components/top-header"
 import { Input } from "@/components/ui/input"
+import { getAdvertiserProfileCompletion, checkAdvertiserProfileComplete } from "@/lib/profile-utils"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
 import { Camera, X, Check, Search, CheckCircle2, Circle, Eye, ChevronLeft, MapPin, Lock, Instagram } from "lucide-react"
@@ -362,7 +363,7 @@ export default function EditProfilePage() {
     ]
 
     keysToRemove.forEach((key) => {
-      localStorage.removeItem(key)
+      //localStorage.removeItem(key)
     })
 
     const influencerMode = localStorage.getItem("influencer_mode") === "true"
@@ -785,48 +786,54 @@ const handleInstagramVerify = async () => {
 };
 
   const handleSave = () => {
-    if (photoPreview) {
-      localStorage.setItem("user_avatar", photoPreview)
-      localStorage.setItem("user_avatar_position_x", savedImagePosition.x.toString())
-      localStorage.setItem("user_avatar_position_y", savedImagePosition.y.toString())
-      localStorage.setItem("user_avatar_scale", savedImageScale.toString())
-    }
-    // Advertisers save common fields here too
-    localStorage.setItem("username", username)
-    localStorage.setItem("user_email", email)
-    localStorage.setItem("user_phone", phone)
-
-    if (isInfluencerMode) {
-      localStorage.setItem("influencer_activity_rate_private", isActivityRatePrivate.toString())
-      localStorage.setItem("influencer_profile_hashtags", JSON.stringify(profileHashtags))
-      localStorage.setItem("influencer_category", category)
-      localStorage.setItem("influencer_instagram_id", instagramId)
-      localStorage.setItem("influencer_is_instagram_verified", isInstagramVerified.toString())
-      localStorage.setItem("influencer_instagram_verification_status", instagramVerificationStatus)
-      localStorage.setItem("influencer_bio", bio)
-      localStorage.setItem("influencer_activity_rate", activityRate)
-      localStorage.setItem("influencer_broad_region", broadRegion)
-      localStorage.setItem("influencer_narrow_region", narrowRegion)
-      localStorage.setItem("influencer_career", career)
-    } else {
-      localStorage.setItem("advertiser_brand_category", brandCategory)
-      localStorage.setItem("advertiser_store_type", storeType)
-      localStorage.setItem("advertiser_brand_name", brandName)
-      localStorage.setItem("advertiser_brand_link", brandLink) // Save brand link
-      localStorage.setItem("advertiser_business_num1", businessNum1)
-      localStorage.setItem("advertiser_business_num2", businessNum2)
-      localStorage.setItem("advertiser_business_num3", businessNum3)
-      localStorage.setItem("advertiser_offline_location", offlineLocation)
-      localStorage.setItem("advertiser_broad_region", broadRegion)
-      localStorage.setItem("advertiser_narrow_region", narrowRegion)
-      localStorage.setItem("advertiser_online_domain", onlineDomain)
-      localStorage.setItem("advertiser_website", website)
-      localStorage.setItem("advertiser_location", location)
-      localStorage.setItem("advertiser_company_description", companyDescription)
-    }
-
-    router.back()
+  if (photoPreview) {
+    localStorage.setItem("user_avatar", photoPreview)
+    localStorage.setItem("user_avatar_position_x", savedImagePosition.x.toString())
+    localStorage.setItem("user_avatar_position_y", savedImagePosition.y.toString())
+    localStorage.setItem("user_avatar_scale", savedImageScale.toString())
   }
+  // Advertisers save common fields here too
+  localStorage.setItem("username", username)
+  localStorage.setItem("user_email", email)
+  localStorage.setItem("user_phone", phone)
+
+  if (isInfluencerMode) {
+    localStorage.setItem("influencer_activity_rate_private", isActivityRatePrivate.toString())
+    localStorage.setItem("influencer_profile_hashtags", JSON.stringify(profileHashtags))
+    localStorage.setItem("influencer_category", category)
+    localStorage.setItem("influencer_instagram_id", instagramId)
+    localStorage.setItem("influencer_is_instagram_verified", isInstagramVerified.toString())
+    localStorage.setItem("influencer_instagram_verification_status", instagramVerificationStatus)
+    localStorage.setItem("influencer_bio", bio)
+    localStorage.setItem("influencer_activity_rate", activityRate)
+    localStorage.setItem("influencer_broad_region", broadRegion)
+    localStorage.setItem("influencer_narrow_region", narrowRegion)
+    localStorage.setItem("influencer_career", career)
+  } else {
+    localStorage.setItem("advertiser_brand_category", brandCategory)
+    localStorage.setItem("advertiser_store_type", storeType)
+    localStorage.setItem("advertiser_brand_name", brandName)
+    localStorage.setItem("advertiser_brand_link", brandLink) // Save brand link (선택)
+    localStorage.setItem("advertiser_business_num1", businessNum1)
+    localStorage.setItem("advertiser_business_num2", businessNum2)
+    localStorage.setItem("advertiser_business_num3", businessNum3)
+    localStorage.setItem("advertiser_offline_location", offlineLocation)
+    localStorage.setItem("advertiser_broad_region", broadRegion)
+    localStorage.setItem("advertiser_narrow_region", narrowRegion)
+    localStorage.setItem("advertiser_online_domain", onlineDomain)
+    localStorage.setItem("advertiser_website", website)
+    localStorage.setItem("advertiser_location", location)
+    localStorage.setItem("advertiser_company_description", companyDescription)
+    
+    // ✅ 광고주 프로필 완성도 체크 및 알림
+    const completion = getAdvertiserProfileCompletion()
+    if (completion === 100) {
+      alert("🎉 프로필이 100% 완성되었습니다!\n이제 캠페인을 작성할 수 있습니다.")
+    }
+  }
+
+  router.back()
+}
 
   const handleCancel = () => {
     router.back()

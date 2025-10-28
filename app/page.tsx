@@ -4,13 +4,25 @@ import { Button } from "@/components/ui/button"
 import { Search, FileText, Zap, BarChart } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { AdvertiserOnboardingModal } from "@/components/advertiser-onboarding-modal"
 import { InfluencerOnboardingModal } from "@/components/influencer-onboarding-modal"
 
 export default function LandingPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<"influencer" | "advertiser">("influencer")
   const [showAdvertiserOnboarding, setShowAdvertiserOnboarding] = useState(false)
   const [showInfluencerOnboarding, setShowInfluencerOnboarding] = useState(false)
+
+  // ✅ 로그인 상태 확인 및 리다이렉트
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      console.log('✅ 로그인 상태 확인됨, 캠페인 페이지로 이동')
+      router.push('/campaigns')
+    }
+  }, [status, session, router])
 
   useEffect(() => {
     if (activeTab === "influencer") {
@@ -69,6 +81,31 @@ export default function LandingPage() {
     }
   }, [activeTab])
 
+  // ✅ 로딩 중일 때 보여줄 화면
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7b68ee] mx-auto mb-4"></div>
+          <p className="text-gray-600">로딩 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ 로그인된 사용자는 리다이렉트 중
+  if (status === 'authenticated') {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7b68ee] mx-auto mb-4"></div>
+          <p className="text-gray-600">리다이렉트 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ 비로그인 사용자만 랜딩 페이지 표시
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="w-full px-4 border-b border-gray-200" style={{ height: "var(--gnb-height)" }}>
@@ -178,15 +215,20 @@ export default function LandingPage() {
             </div>
 
             <div className="fade-in-section space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-12 md:items-center">
-              <div className="space-y-3 md:space-y-4">
-                <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                  기다림은 NO 이젠 적극적으로 어필해요
-                </h4>
+              <div className="space-y-3 md:space-y-4 md:order-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#7b68ee]/10 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-5 h-5 md:w-6 md:h-6 text-[#7b68ee]" />
+                  </div>
+                  <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
+                    광고주님의 캠페인에 쉽게 지원
+                  </h4>
+                </div>
                 <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                  다양한 종류의 캠페인에 참여하고 원하는 협업을 선택할 수도 있어요.
+                  브랜드가 원하는 인플루언서님께 DM으로 먼저 연락이 올 수도 있고, 공고를 보고 캠페인에 직접 지원할 수 있어요.
                 </p>
               </div>
-              <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg">
+              <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg md:order-1">
                 <img
                   src="/campaign-participation-interface.jpg"
                   alt="캠페인 참여 화면"
@@ -199,89 +241,20 @@ export default function LandingPage() {
               <div className="space-y-3 md:space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 md:w-12 md:h-12 bg-[#7b68ee]/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Search className="w-5 h-5 md:w-6 md:h-6 text-[#7b68ee]" />
-                  </div>
-                  <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                    인플루언서 모아보기
-                  </h4>
-                </div>
-                <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                  카테고리, 팔로워 별 필터로 맞춤형 프로필 한눈에 탐색해요.
-                </p>
-              </div>
-              <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg">
-                <img
-                  src="/influencer-discovery-filter-interface.jpg"
-                  alt="인플루언서 탐색 화면"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-
-            <div className="fade-in-section space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-12 md:items-center">
-              <div className="space-y-3 md:space-y-4 md:order-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#7b68ee]/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-5 h-5 md:w-6 md:h-6 text-[#7b68ee]" />
-                  </div>
-                  <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                    캠페인 등록 & 지원
-                  </h4>
-                </div>
-                <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                  광고주님이 모집글을 올리면, 인플루언서님이 직접 지원할 수도 있어요.
-                </p>
-              </div>
-              <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg md:order-1">
-                <img
-                  src="/campaign-registration-and-application-system.jpg"
-                  alt="캠페인 등록 화면"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-
-            <div className="fade-in-section space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-12 md:items-center">
-              <div className="space-y-3 md:space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#7b68ee]/10 rounded-full flex items-center justify-center flex-shrink-0">
                     <Zap className="w-5 h-5 md:w-6 md:h-6 text-[#7b68ee]" />
                   </div>
                   <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                    빠른 탐색 & 연결
+                    빠른 협업 진행
                   </h4>
                 </div>
                 <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                  프로필 카드를 클릭해 인스타그램 프로필을 직접 확인하고 DM으로 컨택해요.
+                  인스타그램 DM으로 광고주님과 바로 소통하고, 협업 진행 상태를 한눈에 확인하세요.
                 </p>
               </div>
               <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg">
                 <img
-                  src="/quick-profile-connection-instagram-integration.jpg"
-                  alt="빠른 연결 화면"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-
-            <div className="fade-in-section space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-12 md:items-center">
-              <div className="space-y-3 md:space-y-4 md:order-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#7b68ee]/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <BarChart className="w-5 h-5 md:w-6 md:h-6 text-[#7b68ee]" />
-                  </div>
-                  <h4 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight">
-                    간소화된 협업 과정
-                  </h4>
-                </div>
-                <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                  공고 등록부터 지원자 관리까지 한 번에, 필요한 정보만 보고, 모아서 보여드릴게요.
-                </p>
-              </div>
-              <div className="bg-gray-100 rounded-xl md:rounded-2xl aspect-video flex items-center justify-center overflow-hidden shadow-lg md:order-1">
-                <img
-                  src="/streamlined-collaboration-management-dashboard.jpg"
-                  alt="협업 관리 화면"
+                  src="/fast-collaboration-process-tracking.jpg"
+                  alt="빠른 협업 진행"
                   className="w-full h-full object-cover"
                 />
               </div>
