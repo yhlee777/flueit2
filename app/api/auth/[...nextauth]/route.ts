@@ -59,6 +59,7 @@ export const authOptions: NextAuthOptions = {
       console.log('🔍 signIn callback 시작', { 
         provider: account?.provider,
         hasEmail: !!user.email,
+        originalUserId: user.id,
       })
       
       if (account?.provider === 'google' || account?.provider === 'kakao') {
@@ -91,15 +92,17 @@ export const authOptions: NextAuthOptions = {
               profileImage: !!profileImage 
             })
             
-            // ✅ 기존 사용자 확인 (provider_id 또는 email로) - kakao_id 대신 provider_id 사용
+            // ✅ 기존 사용자 확인 (provider_id로만 확인)
             const { data: existingUser, error: selectError } = await supabaseAdmin
               .from('users')
-              .select('*')
-              .or(`email.eq.${email},provider_id.eq.${kakaoId}`)
-              .maybeSingle()  // single 대신 maybeSingle 사용
+              .select('id, email, username, provider_id')
+              .eq('provider', 'kakao')
+              .eq('provider_id', kakaoId)
+              .maybeSingle()
 
             console.log('🔍 기존 사용자 조회:', { 
               found: !!existingUser,
+              userId: existingUser?.id,
               errorCode: selectError?.code 
             })
 
@@ -114,11 +117,13 @@ export const authOptions: NextAuthOptions = {
                   name: nickname || username,
                   image: profileImage,
                   provider: 'kakao',
-                  provider_id: kakaoId,  // ✅ kakao_id 대신 provider_id 사용
+                  provider_id: kakaoId,
                   user_type: null,
+                  approval_status: 'pending',
+                  is_admin: false,
                   created_at: new Date().toISOString(),
                 })
-                .select()
+                .select('id, email, username')
                 .single()
               
               console.log('🔍 신규 사용자 생성 결과:', { 
@@ -129,36 +134,25 @@ export const authOptions: NextAuthOptions = {
               
               if (insertError) {
                 console.error('❌ 사용자 생성 실패:', insertError)
-                
-                // 중복 사용자 에러 처리
-                if (insertError.code === '23505') {
-                  console.log('⚠️ 이미 존재하는 사용자, 로그인 허용')
-                  return true
-                }
-                
                 return false
               }
               
               if (newUser) {
+                // ✅ user 객체를 완전히 교체
                 user.id = newUser.id
+                user.email = newUser.email
+                user.name = newUser.username
                 console.log('✅ 신규 사용자 ID 설정:', newUser.id)
               }
             } else {
-              // 기존 사용자 - ID 설정
+              // ✅ 기존 사용자 - user 객체를 완전히 교체
               user.id = existingUser.id
+              user.email = existingUser.email || email
+              user.name = existingUser.username || nickname
               console.log('✅ 기존 사용자 ID 설정:', existingUser.id)
-              
-              // ✅ 기존 사용자의 provider_id가 없으면 업데이트
-              if (!existingUser.provider_id && kakaoId) {
-                await supabaseAdmin
-                  .from('users')
-                  .update({ provider_id: kakaoId })  // ✅ kakao_id 대신 provider_id 사용
-                  .eq('id', existingUser.id)
-                console.log('✅ 기존 사용자에 provider_id 추가')
-              }
             }
             
-            console.log('✅ 카카오 로그인 성공, userId:', user.id)
+            console.log('✅ 카카오 로그인 성공, 최종 user.id:', user.id)
             return true
           }
           
@@ -175,8 +169,9 @@ export const authOptions: NextAuthOptions = {
             
             const { data: existingUser } = await supabaseAdmin
               .from('users')
-              .select('*')
-              .eq('email', email)
+              .select('id, email, username')
+              .eq('provider', 'google')
+              .eq('provider_id', account.providerAccountId)
               .maybeSingle()
 
             if (!existingUser) {
@@ -190,11 +185,13 @@ export const authOptions: NextAuthOptions = {
                   name: user.name,
                   image: user.image,
                   provider: 'google',
-                  provider_id: account.providerAccountId,  // ✅ 구글 provider_id도 저장
+                  provider_id: account.providerAccountId,
                   user_type: null,
+                  approval_status: 'pending',
+                  is_admin: false,
                   created_at: new Date().toISOString(),
                 })
-                .select()
+                .select('id, email, username')
                 .single()
               
               if (insertError && insertError.code !== '23505') {
@@ -204,9 +201,15 @@ export const authOptions: NextAuthOptions = {
               
               if (newUser) {
                 user.id = newUser.id
+                user.email = newUser.email
+                user.name = newUser.username
+                console.log('✅ 신규 구글 사용자 ID 설정:', newUser.id)
               }
             } else {
               user.id = existingUser.id
+              user.email = existingUser.email
+              user.name = existingUser.username
+              console.log('✅ 기존 구글 사용자 ID 설정:', existingUser.id)
             }
             
             console.log('✅ 구글 로그인 성공')
@@ -230,9 +233,16 @@ export const authOptions: NextAuthOptions = {
         token.accessToken = account.access_token
         token.provider = account.provider
       }
-      if (user) {
+      if (user?.id) {
         token.id = user.id
+        console.log('✅ JWT에 user.id 저장:', user.id)
       }
+      
+      console.log('🔍 JWT callback 완료:', {
+        tokenId: token.id,
+        provider: token.provider,
+      })
+      
       return token
     },
     
@@ -240,13 +250,17 @@ export const authOptions: NextAuthOptions = {
       session.accessToken = token.accessToken as string
       session.provider = token.provider as string
       
+      console.log('🔍 Session callback 시작:', {
+        tokenId: token.id,
+        tokenType: typeof token.id,
+      })
+      
       if (token.id) {
         console.log('🔍 세션 생성 시작 - token.id:', token.id)
         
-        // ✅ kakao_id 제거 - session에서는 필요 없음
         const { data: user, error } = await supabaseAdmin
           .from('users')
-          .select('id, email, username, name, image, user_type, provider_id')
+          .select('id, email, username, name, image, user_type, provider_id, approval_status, is_admin')
           .eq('id', token.id as string)
           .single()
         
@@ -259,6 +273,8 @@ export const authOptions: NextAuthOptions = {
           email: user?.email,
           username: user?.username,
           user_type: user?.user_type,
+          approval_status: user?.approval_status,
+          is_admin: user?.is_admin,
           hasUserType: user?.user_type !== null && user?.user_type !== undefined,
         })
         
@@ -268,13 +284,17 @@ export const authOptions: NextAuthOptions = {
           session.user.name = user.name || user.username
           session.user.image = user.image
           session.user.userType = user.user_type
+          // @ts-ignore
+          session.user.approval_status = user.approval_status
+          // @ts-ignore
+          session.user.is_admin = user.is_admin
           
           console.log('✅ 세션에 userType 설정 완료:', {
             userType: user.user_type,
             sessionUserType: session.user.userType,
+            approval_status: user.approval_status,
+            is_admin: user.is_admin,
           })
-          
-          console.log('✅ 최종 session.user 객체:', JSON.stringify(session.user, null, 2))
           
           // ✅ 임시 이메일인지 확인
           if (user.email?.includes('@temp.local')) {
@@ -285,13 +305,15 @@ export const authOptions: NextAuthOptions = {
           console.warn('⚠️ DB에서 사용자를 찾을 수 없습니다!')
         }
       } else {
-        console.warn('⚠️ token.id가 없습니다! JWT 토큰 문제일 수 있습니다.')
+        console.warn('⚠️ token.id가 없습니다!')
       }
       
       console.log('✅ 최종 세션 반환:', {
         hasUser: !!session.user,
         userId: session.user?.id,
         userType: session.user?.userType,
+        approval_status: (session.user as any)?.approval_status,
+        is_admin: (session.user as any)?.is_admin,
       })
       
       return session
