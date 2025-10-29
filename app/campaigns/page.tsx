@@ -1,16 +1,16 @@
 "use client"
 
 import { Input } from "@/components/ui/input"
-import { checkAdvertiserProfileComplete } from "@/lib/profile-utils"
-
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useSession } from "next-auth/react" // ✅ 추가
 import { useCampaigns } from "@/lib/campaign-store"
 import { TopHeader } from "@/components/top-header"
 import { Button } from "@/components/ui/button"
-import { Search, SlidersHorizontal, ChevronDown, Pencil, MoreVertical, MapPin, Home, Eye } from "lucide-react"
+import { Search, SlidersHorizontal, ChevronDown, Pencil, MoreVertical, MapPin, Home, Eye, Heart } from "lucide-react"
 import { Drawer, DrawerContent, DrawerFooter, DrawerClose } from "@/components/ui/drawer"
 import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/components/ui/carousel"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const bannerAds = [
   {
@@ -70,8 +70,9 @@ const regions = [
 const sortOptions = ["추천순", "최신순", "인기순"]
 
 export default function CampaignsPage() {
-  
+  const { data: session, status } = useSession() // ✅ 세션 가져오기
   const { campaigns, loading } = useCampaigns()
+  
   const [isInfluencerMode, setIsInfluencerMode] = useState(false)
   const [isProfileComplete, setIsProfileComplete] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -84,15 +85,70 @@ export default function CampaignsPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [selectedRegions, setSelectedRegions] = useState<string[]>([])
   const [selectedVisitType, setSelectedVisitType] = useState<string>("")
+  const [favoriteCampaignIds, setFavoriteCampaignIds] = useState<string[]>([])
+
+  // ✅ 세션에서 user_type 가져와서 설정
+  useEffect(() => {
+    if (status === "loading") return
+
+    console.log("🔍 세션 상태:", status)
+    console.log("🔍 세션 데이터:", session)
+
+    if (session?.user?.userType) {
+      // DB에 user_type이 있으면 이걸 사용
+      const isInfluencer = session.user.userType === 'INFLUENCER'
+      setIsInfluencerMode(isInfluencer)
+      
+      // localStorage와 동기화
+      localStorage.setItem('influencer_mode', isInfluencer.toString())
+      
+      console.log('✅ user_type에서 모드 설정:', session.user.userType, '→', isInfluencer)
+    } else {
+      // DB에 없으면 localStorage 확인
+      const savedMode = localStorage.getItem("influencer_mode")
+      if (savedMode !== null) {
+        const isInfluencer = savedMode === "true"
+        setIsInfluencerMode(isInfluencer)
+        console.log('⚠️ localStorage에서 모드 설정:', savedMode, '→', isInfluencer)
+      } else {
+        console.log('⚠️ user_type과 localStorage 모두 없음')
+      }
+    }
+  }, [session, status])
+
+  // ✅ 즐겨찾기 로드
+  useEffect(() => {
+    if (isInfluencerMode) {
+      const savedFavorites = localStorage.getItem("campaign-favorites")
+      if (savedFavorites) {
+        setFavoriteCampaignIds(JSON.parse(savedFavorites))
+      }
+    }
+  }, [isInfluencerMode])
+
+  // ✅ 배너 설정
+  useEffect(() => {
+    if (!bannerApi) return
+
+    const updateSlide = () => {
+      setCurrentBannerSlide(bannerApi.selectedScrollSnap())
+    }
+
+    bannerApi.on("select", updateSlide)
+    return () => {
+      bannerApi.off("select", updateSlide)
+    }
+  }, [bannerApi])
 
   const getSortedCampaigns = () => {
     let filteredCampaigns = [...campaigns]
 
+    // 마감/비공개 제외
     filteredCampaigns = filteredCampaigns.filter(
-      (campaign) => campaign.status !== "구인 마감" && campaign.status !== "비공개 글",
+      (campaign) => campaign.status !== "비공개 글",
     )
 
-    // Apply search filter
+    // 검색 필터
     if (searchQuery.trim()) {
       filteredCampaigns = filteredCampaigns.filter(
         (campaign) =>
@@ -101,116 +157,59 @@ export default function CampaignsPage() {
       )
     }
 
-    // Apply category filter
+    // 카테고리 필터
     if (selectedCategories.length > 0) {
-      filteredCampaigns = filteredCampaigns.filter((campaign) => selectedCategories.includes(campaign.category))
+      filteredCampaigns = filteredCampaigns.filter((campaign) => 
+        selectedCategories.includes(campaign.category)
+      )
     }
 
-    // Apply visit type filter
+    // 지역 필터
+    if (selectedRegions.length > 0) {
+      filteredCampaigns = filteredCampaigns.filter((campaign) =>
+        selectedRegions.some((region) => (campaign as any).region?.includes(region))
+      )
+    }
+
+    // 방문 유형 필터
     if (selectedVisitType) {
-      filteredCampaigns = filteredCampaigns.filter((campaign) => {
-        if (selectedVisitType === "방문형") {
-          return campaign.visit_type === "visit"  // ✅ snake_case
-        } else if (selectedVisitType === "비방문형") {
-          return campaign.visit_type === "non-visit"  // ✅ snake_case
-        }
-        return true
+      filteredCampaigns = filteredCampaigns.filter(
+        (campaign) => campaign.visit_type === selectedVisitType
+      )
+    }
+
+    // 정렬
+    if (selectedSort === "최신순") {
+      filteredCampaigns.sort((a, b) => {
+        const dateA = new Date(a.created_at || 0).getTime()
+        const dateB = new Date(b.created_at || 0).getTime()
+        return dateB - dateA
+      })
+    } else if (selectedSort === "인기순") {
+      filteredCampaigns.sort((a, b) => {
+        const scoreA = (a.views || 0) + (a.likes || 0) * 2 + (a.comments || 0) * 3
+        const scoreB = (b.views || 0) + (b.likes || 0) * 2 + (b.comments || 0) * 3
+        return scoreB - scoreA
       })
     }
 
-    // Apply sorting
-    switch (selectedSort) {
-      case "최신순":
-        // ✅ created_at 기준으로 정렬
-        return filteredCampaigns.sort((a, b) => {
-          const aDate = new Date(a.created_at || 0).getTime()  // ✅ snake_case
-          const bDate = new Date(b.created_at || 0).getTime()  // ✅ snake_case
-          return bDate - aDate  // 최신이 먼저
-        })
-      case "인기순":
-        // ✅ likes + comments 기준 (undefined 방지)
-        return filteredCampaigns.sort((a, b) => {
-          const aPopularity = (a.likes || 0) + (a.comments || 0)
-          const bPopularity = (b.likes || 0) + (b.comments || 0)
-          return bPopularity - aPopularity
-        })
-      case "추천순":
-      default:
-        // ✅ views 기준으로 추천순 정렬
-        return filteredCampaigns.sort((a, b) => {
-          return (b.views || 0) - (a.views || 0)
-        })
-    }
-  }
-  const sortedCampaigns = getSortedCampaigns()
-
-  const getNegotiationText = (campaign: any) => {
-    if (campaign.is_deal_possible) {  // ✅ snake_case
-      return { text: "딜 가능", color: "text-[#7b68ee] bg-[#7b68ee]/10" }
-    }
-    if (campaign.negotiation_option === "yes") {  // ✅ snake_case
-      return { text: "협의 가능", color: "text-gray-400 bg-gray-100" }
-    } else if (campaign.negotiation_option === "no") {  // ✅ snake_case
-      return { text: "협의 불가", color: "text-gray-400 bg-gray-100" }
-    }
-    return null
+    return filteredCampaigns
   }
 
-  const getVisitTypeBadge = (campaign: any) => {
-    if (campaign.visit_type === "visit") {  // ✅ snake_case
-      return {
-        icon: MapPin,
-        text: "방문형",
-      }
-    } else if (campaign.visit_type === "non-visit") {  // ✅ snake_case
-      return {
-        icon: Home,
-        text: "비방문형",
-      }
-    }
-    return null
+  const toggleCategoryFilter = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
+    )
   }
 
-  useEffect(() => {
-    const influencerMode = localStorage.getItem("influencer_mode") === "true"
-    setIsInfluencerMode(influencerMode)
-
-    if (!influencerMode) {
-      const isComplete = checkAdvertiserProfileComplete()
-      setIsProfileComplete(isComplete)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!bannerApi) {
-      return
-    }
-
-    setCurrentBannerSlide(bannerApi.selectedScrollSnap())
-
-    bannerApi.on("select", () => {
-      setCurrentBannerSlide(bannerApi.selectedScrollSnap())
-    })
-  }, [bannerApi])
-
-  const handleCategoryChange = (category: string, checked: boolean) => {
-    if (checked) {
-      setSelectedCategories([...selectedCategories, category])
-    } else {
-      setSelectedCategories(selectedCategories.filter((c) => c !== category))
-    }
+  const toggleRegionFilter = (region: string) => {
+    setSelectedRegions((prev) =>
+      prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]
+    )
   }
 
-  const handleRegionChange = (region: string, checked: boolean) => {
-    if (checked) {
-      setSelectedRegions([...selectedRegions, region])
-    } else {
-      setSelectedRegions(selectedRegions.filter((r) => r !== region))
-    }
-  }
-
-  const handleVisitTypeChange = (visitType: string) => {
-    setSelectedVisitType(selectedVisitType === visitType ? "" : visitType)
+  const toggleVisitTypeFilter = (type: string) => {
+    setSelectedVisitType((prev) => (prev === type ? "" : type))
   }
 
   const clearFilters = () => {
@@ -219,330 +218,268 @@ export default function CampaignsPage() {
     setSelectedVisitType("")
   }
 
-  const handleSortChange = (sort: string) => {
-    setSelectedSort(sort)
+  const toggleFavorite = (campaignId: string) => { // string 타입
+  const newFavorites = favoriteCampaignIds.includes(campaignId)
+    ? favoriteCampaignIds.filter((id) => id !== campaignId)
+    : [...favoriteCampaignIds, campaignId]
+  
+  setFavoriteCampaignIds(newFavorites)
+  localStorage.setItem("campaign-favorites", JSON.stringify(newFavorites))
+}
+
+  const getVisitTypeBadge = (campaign: any) => {
+    if (campaign.visit_type === "visit") {
+      return { icon: MapPin, text: "방문형" }
+    } else if (campaign.visit_type === "non-visit") {
+      return { icon: Home, text: "비방문형" }
+    }
+    return null
   }
 
-  const applySortFilter = () => {
-    setIsSortOpen(false)
-  }
+  const sortedCampaigns = getSortedCampaigns()
 
-  const cancelSortFilter = () => {
-    setIsSortOpen(false)
-  }
+  console.log("📊 캠페인 데이터:", {
+    전체: campaigns.length,
+    필터링됨: sortedCampaigns.length,
+    로딩중: loading,
+    모드: isInfluencerMode ? "인플루언서" : "광고주"
+  })
 
   return (
     <div className="min-h-screen bg-white pb-20">
-      <TopHeader />
+      <TopHeader title="캠페인" showSearch={false} showNotifications={true} />
 
-      <main className="max-w-2xl mx-auto pt-16">
-        <div className="px-4 pb-4 sticky top-16 bg-white z-20 border-b border-gray-100">
-          <div className="relative mt-3 mb-3">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+      <main className="px-4 py-6">
+        {/* 검색 + 필터 */}
+        <div className="flex items-center gap-2 mb-6">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
-              type="text"
               placeholder="캠페인 검색"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 pr-4 py-3 h-12 text-base border-gray-200 rounded-xl focus-visible:ring-1 focus-visible:ring-[#7b68ee] focus-visible:ring-offset-0"
+              className="pl-10 bg-gray-50 border-none h-11"
             />
           </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 flex-shrink-0"
+            onClick={() => setIsFilterOpen(true)}
+          >
+            <SlidersHorizontal className="w-5 h-5" />
+          </Button>
+        </div>
 
-          <Carousel className="w-full" setApi={setBannerApi}>
+        {/* 정렬 */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500">
+            {sortedCampaigns.length}개의 캠페인
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-sm h-8"
+            onClick={() => setIsSortOpen(true)}
+          >
+            {selectedSort}
+            <ChevronDown className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
+
+        {/* 배너 */}
+        <div className="mb-6">
+          <Carousel setApi={setBannerApi} className="w-full">
             <CarouselContent>
-              {bannerAds.map((banner) => (
-                <CarouselItem key={banner.id}>
-                  <div
-                    className={`w-full h-32 ${banner.backgroundColor} rounded-2xl flex flex-col justify-center px-6 shadow-sm`}
-                  >
-                    <h3 className={`text-xl font-bold ${banner.textColor} mb-2`}>{banner.title}</h3>
-                    <p className={`text-sm ${banner.textColor} opacity-90`}>{banner.subtitle}</p>
+              {bannerAds.map((ad) => (
+                <CarouselItem key={ad.id}>
+                  <div className={`${ad.backgroundColor} ${ad.textColor} rounded-2xl p-6`}>
+                    <h3 className="text-lg font-bold mb-1">{ad.title}</h3>
+                    <p className="text-sm opacity-90">{ad.subtitle}</p>
                   </div>
                 </CarouselItem>
               ))}
             </CarouselContent>
-            <div className="flex justify-center gap-1.5 mt-3">
-              {bannerAds.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => bannerApi?.scrollTo(index)}
-                  className={`h-1.5 rounded-full transition-all ${
-                    index === currentBannerSlide ? "w-6 bg-[#7b68ee]" : "w-1.5 bg-gray-300"
-                  }`}
-                  aria-label={`Go to slide ${index + 1}`}
-                />
-              ))}
-            </div>
           </Carousel>
-
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={() => setIsFilterOpen(true)}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <SlidersHorizontal className="w-4 h-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">필터</span>
-              {(selectedCategories.length > 0 || selectedRegions.length > 0 || selectedVisitType) && (
-                <span className="bg-[#7b68ee] text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                  {selectedCategories.length + selectedRegions.length + (selectedVisitType ? 1 : 0)}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setIsSortOpen(true)}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <span className="text-sm font-medium text-gray-700">{selectedSort}</span>
-              <ChevronDown className="w-4 h-4 text-gray-600" />
-            </button>
+          <div className="flex justify-center gap-2 mt-3">
+            {bannerAds.map((_, index) => (
+              <div
+                key={index}
+                className={`h-1.5 rounded-full transition-all ${
+                  index === currentBannerSlide ? "w-6 bg-[#7b68ee]" : "w-1.5 bg-gray-300"
+                }`}
+              />
+            ))}
           </div>
         </div>
 
-        <div className="divide-y divide-gray-100">
-          {loading ? (
-            <div className="py-20 text-center text-gray-500">로딩 중...</div>
-          ) : sortedCampaigns.length === 0 ? (
-            <div className="py-20 text-center text-gray-500">
-              {searchQuery.trim() ? "검색 결과가 없습니다." : "등록된 캠페인이 없습니다."}
-            </div>
-          ) : (
-            sortedCampaigns.map((campaign, index) => (
-              <div key={campaign.id}>
-                <div className="py-4 px-4 hover:bg-gray-50/50 transition-colors relative">
-                  <Link href={`/campaigns/${campaign.id}`} className="block">
-                    <div className="flex gap-4">
-                      <div className="w-24 h-24 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden">
-                        {campaign.thumbnail ? (
-                          <img
-                            src={campaign.thumbnail}
-                            alt={campaign.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-400">
-                            <span className="text-xs">이미지 없음</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-base line-clamp-2 mb-1 pr-6">{campaign.title}</h3>
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {getNegotiationText(campaign) && (
-                              <span
-                                className={`${getNegotiationText(campaign)!.color} text-xs px-2 py-0.5 rounded font-medium`}
-                              >
-                                {getNegotiationText(campaign)!.text}
-                              </span>
-                            )}
-                            {campaign.recruit_count && (  // ✅ snake_case
-                              <p className="text-sm text-gray-600">
-                                <span className="text-sm text-[#7b68ee] font-semibold">{campaign.applicants || 0}</span>
-                                <span className="text-sm">/{campaign.recruit_count}</span>{" "}  {/* ✅ snake_case */}
-                                <span className="text-xs text-gray-500">명 모집중</span>
-                              </p>
-                            )}
-                            {campaign.confirmed_applicants &&  // ✅ snake_case
-                              campaign.recruit_count &&  // ✅ snake_case
-                              campaign.confirmed_applicants / campaign.recruit_count >= 0.7 && (  // ✅ snake_case
-                                <span className="bg-orange-500/10 text-orange-500 text-xs px-2 py-1 rounded font-medium">
-                                  마감 임박
-                                </span>
-                              )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            <span className="bg-[#7b68ee]/10 text-[#7b68ee] font-medium text-xs px-2 py-1 rounded">
-                              {campaign.category}
-                            </span>
-                            {getVisitTypeBadge(campaign) && (
-                              <span className="bg-gray-100 text-gray-600 font-medium text-xs px-2 py-1 rounded">
-                                {getVisitTypeBadge(campaign)!.text}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+        {/* 캠페인 목록 */}
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7b68ee] mx-auto mb-4"></div>
+            <p className="text-gray-500">캠페인을 불러오는 중...</p>
+          </div>
+        ) : sortedCampaigns.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500">조건에 맞는 캠페인이 없습니다</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sortedCampaigns.map((campaign) => (
+              <Link key={campaign.id} href={`/campaigns/${campaign.id}`}>
+                <div className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="relative h-48">
+                    <img
+                      src={campaign.thumbnail || "/placeholder.svg"}
+                      alt={campaign.title}
+                      className="w-full h-full object-cover"
+                    />
+                    {isInfluencerMode && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-9 w-9 bg-white/90 hover:bg-white rounded-full"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          toggleFavorite(campaign.id)
+                        }}
+                      >
+                        <Heart
+                          className={`w-5 h-5 ${
+                            favoriteCampaignIds.includes(campaign.id)
+                              ? "fill-red-500 text-red-500"
+                              : "text-gray-600"
+                          }`}
+                        />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="bg-[#7b68ee]/10 text-[#7b68ee] font-medium text-xs px-2 py-1 rounded">
+                        {campaign.category}
+                      </span>
+                      {getVisitTypeBadge(campaign) && (
+                        <span className="bg-gray-100 text-gray-600 font-medium text-xs px-2 py-1 rounded flex items-center gap-1">
+                          {(() => {
+  const badge = getVisitTypeBadge(campaign)
+  const Icon = badge?.icon
+  return Icon && <Icon className="w-3 h-3" />
+})()}
+{getVisitTypeBadge(campaign)?.text}
+                          {getVisitTypeBadge(campaign)!.text}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="absolute bottom-6 right-0 flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-xs font-semibold text-gray-400">{campaign.views || 0}</span>
+                    <h3 className="font-semibold text-base mb-2 line-clamp-2">
+                      {campaign.title}
+                    </h3>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-lg font-bold text-[#7b68ee]">
+                        {campaign.reward}
+                      </p>
+                      <div className="flex items-center gap-3 text-sm text-gray-400">
+                        <span className="flex items-center gap-1">
+                          <Eye className="w-4 h-4" />
+                          {campaign.views || 0}
+                        </span>
+                      </div>
                     </div>
-                  </Link>
+                  </div>
                 </div>
-                {index < sortedCampaigns.length - 1 && <div className="border-b border-gray-100" />}
-              </div>
-            ))
-          )}
-        </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </main>
 
-      {!isInfluencerMode && isProfileComplete && (
-        <Link href="/campaigns/create">
-          <button className="fixed bottom-24 right-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center z-50 transition-all duration-200 hover:scale-105 active:scale-95 bg-[#7b68ee]">
-            <Pencil className="w-6 h-6 text-white" />
-          </button>
-        </Link>
-      )}
-
-      {!isInfluencerMode && !isProfileComplete && (
-        <button
-          disabled
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center z-50 bg-[#7b68ee]/30 cursor-not-allowed"
-        >
-          <Pencil className="w-6 h-6 text-white" />
-        </button>
-      )}
-
+      {/* 필터 Drawer */}
       <Drawer open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-        <DrawerContent className="rounded-t-3xl [&>div:first-child]:hidden max-h-[85vh]">
-          <div className="flex justify-center pt-4 pb-2">
-            <div className="w-12 h-1 bg-gray-300 rounded-full" />
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <div className="px-4 pt-2 pb-4 space-y-6">
+        <DrawerContent className="max-h-[80vh]">
+          <div className="p-4 overflow-y-auto">
+            <h3 className="font-semibold text-lg mb-4">필터</h3>
+
+            <div className="space-y-6">
+              {/* 카테고리 */}
               <div>
-                <h3 className="font-semibold text-lg mb-3">카테고리</h3>
-                <div className="flex flex-wrap gap-2">
+                <h4 className="font-medium mb-3">카테고리</h4>
+                <div className="space-y-2">
                   {categories.map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => handleCategoryChange(category, !selectedCategories.includes(category))}
-                      className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                        selectedCategories.includes(category)
-                          ? "bg-[#7b68ee] text-white border-[#7b68ee]"
-                          : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                      }`}
-                    >
-                      {category}
-                    </button>
+                    <div key={category} className="flex items-center">
+                      <Checkbox
+                        checked={selectedCategories.includes(category)}
+                        onCheckedChange={() => toggleCategoryFilter(category)}
+                      />
+                      <label className="ml-2 text-sm">{category}</label>
+                    </div>
                   ))}
                 </div>
               </div>
 
+              {/* 방문 유형 */}
               <div>
-                <h3 className="font-semibold text-lg mb-3">캠페인 유형</h3>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => handleVisitTypeChange("방문형")}
-                    className={`px-3 py-2 rounded-full text-sm border transition-colors flex items-center gap-1 ${
-                      selectedVisitType === "방문형"
-                        ? "bg-[#7b68ee] text-white border-[#7b68ee]"
-                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                    }`}
-                  >
-                    <MapPin className="w-4 h-4" />
-                    방문형 캠페인
-                  </button>
-                  <button
-                    onClick={() => handleVisitTypeChange("비방문형")}
-                    className={`px-3 py-2 rounded-full text-sm border transition-colors flex items-center gap-1 ${
-                      selectedVisitType === "비방문형"
-                        ? "bg-[#7b68ee] text-white border-[#7b68ee]"
-                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                    }`}
-                  >
-                    <Home className="w-4 h-4" />
-                    비방문형 캠페인
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-lg mb-3">지역</h3>
-                <div className="flex flex-wrap gap-2">
-                  {regions.map((region) => (
-                    <button
-                      key={region}
-                      onClick={() => handleRegionChange(region, !selectedRegions.includes(region))}
-                      className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                        selectedRegions.includes(region)
-                          ? "bg-[#7b68ee] text-white border-[#7b68ee]"
-                          : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
-                      }`}
-                    >
-                      {region}
-                    </button>
-                  ))}
+                <h4 className="font-medium mb-3">방문 유형</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <Checkbox
+                      checked={selectedVisitType === "visit"}
+                      onCheckedChange={() => toggleVisitTypeFilter("visit")}
+                    />
+                    <label className="ml-2 text-sm">방문형</label>
+                  </div>
+                  <div className="flex items-center">
+                    <Checkbox
+                      checked={selectedVisitType === "non-visit"}
+                      onCheckedChange={() => toggleVisitTypeFilter("non-visit")}
+                    />
+                    <label className="ml-2 text-sm">비방문형</label>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          <DrawerFooter className="pt-3 pb-6 border-t border-gray-100">
+
+          <DrawerFooter className="border-t">
             <div className="flex gap-2">
-              <Button variant="outline" onClick={clearFilters} className="flex-[3] bg-transparent h-12">
+              <Button variant="outline" onClick={clearFilters} className="flex-1">
                 초기화
               </Button>
               <DrawerClose asChild>
-                <Button className="flex-[7] bg-[#7b68ee] hover:bg-[#7b68ee]/90 h-12">적용</Button>
+                <Button className="flex-1 bg-[#7b68ee]">적용</Button>
               </DrawerClose>
             </div>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
+      {/* 정렬 Drawer */}
       <Drawer open={isSortOpen} onOpenChange={setIsSortOpen}>
-        <DrawerContent className="rounded-t-3xl [&>div:first-child]:hidden">
-          <div className="flex justify-center pt-4 pb-2">
-            <div className="w-12 h-1 bg-gray-300 rounded-full" />
-          </div>
-          <div className="px-4 pt-2 pb-4 space-y-6">
-            <div>
-              <div className="space-y-2">
-                {sortOptions.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => handleSortChange(option)}
-                    className={`w-full text-left px-4 py-3 rounded-lg text-base transition-colors ${
-                      selectedSort === option ? "bg-[#7b68ee] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DrawerFooter className="pt-3 pb-6 border-t border-gray-100">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={cancelSortFilter} className="w-full bg-transparent h-12">
-                취소
-              </Button>
-              <Button onClick={applySortFilter} className="w-full bg-[#7b68ee] hover:bg-[#7b68ee]/90 h-12">
-                적용
-              </Button>
-            </div>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
-
-      <Drawer open={isReportOpen} onOpenChange={setIsReportOpen}>
-        <DrawerContent className="rounded-t-3xl [&>div:first-child]:hidden">
-          <div className="flex justify-center pt-4 pb-2">
-            <div className="w-12 h-1 bg-gray-300 rounded-full" />
-          </div>
-          <div className="px-4 pt-2 pb-4 space-y-6">
+        <DrawerContent>
+          <div className="p-4">
+            <h3 className="font-semibold text-lg mb-4">정렬</h3>
             <div className="space-y-2">
-              <button
-                onClick={() => {
-                  // Handle report action
-                  setIsReportOpen(false)
-                }}
-                className="w-full text-left px-4 py-3 rounded-lg text-base transition-colors bg-white text-red-500 hover:bg-red-50"
-              >
-                신고하기
-              </button>
+              {sortOptions.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => {
+                    setSelectedSort(option)
+                    setIsSortOpen(false)
+                  }}
+                  className={`w-full p-3 rounded-lg text-left ${
+                    selectedSort === option
+                      ? "bg-[#7b68ee] text-white"
+                      : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
             </div>
           </div>
-          <DrawerFooter className="pt-3 pb-6 border-t border-gray-100">
-            <div className="flex gap-2">
-              <DrawerClose asChild>
-                <Button variant="outline" className="w-full bg-transparent h-12">
-                  취소
-                </Button>
-              </DrawerClose>
-            </div>
-          </DrawerFooter>
         </DrawerContent>
       </Drawer>
     </div>

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { TopHeader } from "@/components/top-header"
-import { signOut } from "next-auth/react"  // ✅ 추가
+import { signOut } from "next-auth/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -19,8 +20,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
-import { useCampaigns } from "@/lib/campaign-store"
-import { useApplicationStore } from "@/lib/application-store"
+// ❌ 삭제: import { useApplicationStore } from "@/lib/application-store"
 import { useChatStore } from "@/lib/chat-store"
 import { checkAdvertiserProfileComplete, getAdvertiserProfileCompletion } from "@/lib/profile-utils"
 import {
@@ -41,55 +41,37 @@ import {
   Star,
   MapPin,
   MoreVertical,
+  Loader2,
 } from "lucide-react"
-import ProfileCard from "@/components/profile-card" // Import ProfileCard component
+import ProfileCard from "@/components/profile-card"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { X } from "lucide-react"
 
-const userData = {
-  name: "밍밍 부인",
-  avatar: "", // Removed default avatar image
-  verified: true,
+// ✅ DB 스키마와 일치하는 Campaign 타입 (snake_case)
+interface Campaign {
+  id: string
+  user_id: string | null
+  title: string
+  category: string
+  status: string
+  recruit_type: string | null
+  recruit_count: number | null  // ✅ snake_case
+  applicants: number
+  confirmed_applicants: number  // ✅ snake_case
+  visit_type: "visit" | "non-visit" | null
+  reward_type: string | null
+  payment_amount: string | null
+  thumbnail: string | null
+  views: number
+  created_at: string
+  updated_at: string
 }
 
-const mockApplications = [
-  {
-    id: 1,
-    applicationStatus: "지원 완료",
-    campaignStatus: "구인 진행중",
-    campaignStatusColor: "bg-[#7b68ee]",
-    title: "서울 강남 뷰티 살롱 체험단 모집",
-    advertiser: "뷰티살롱",
-    appliedTime: "2시간 전",
-  },
-  {
-    id: 2,
-    applicationStatus: "지원 완료",
-    campaignStatus: "구인 진행중",
-    campaignStatusColor: "bg-[#7b68ee]",
-    title: "홍대 카페 인플루언서 협업",
-    advertiser: "카페오너",
-    appliedTime: "1일 전",
-  },
-  {
-    id: 3,
-    applicationStatus: "다음기회에",
-    campaignStatus: "구인 마감",
-    campaignStatusColor: "bg-gray-500",
-    title: "제주도 호텔 리뷰 이벤트",
-    advertiser: "제주호텔",
-    appliedTime: "2일 전",
-  },
-  {
-    id: 4,
-    applicationStatus: "다음기회에",
-    campaignStatus: "구인 마감",
-    campaignStatusColor: "bg-gray-500",
-    title: "부산 맛집 탐방 프로젝트",
-    advertiser: "맛집투어",
-    appliedTime: "3일 전",
-  },
-]
+const userData = {
+  name: "밍밍 부인",
+  avatar: "",
+  verified: true,
+}
 
 const statusOptions = [
   { value: "구인 진행 중", color: "bg-[#7b68ee] text-white" },
@@ -111,40 +93,25 @@ const mockApplicantsData: Record<number, any[]> = {
       verified: true,
       trustScore: 4.8,
     },
-    {
-      id: 2,
-      name: "박뷰티",
-      followers: "89K",
-      engagement: 5.1,
-      category: "뷰티·화장품",
-      region: "부산",
-      price: "35만원",
-      avatar: "/korean-beauty-influencer-2.jpg",
-      verified: true,
-      trustScore: 4.6,
-    },
-    {
-      id: 3,
-      name: "이뷰티",
-      followers: "203K",
-      engagement: 3.8,
-      category: "뷰티·화장품",
-      region: "서울",
-      price: "80만원",
-      avatar: "/korean-beauty-influencer-3.jpg",
-      verified: false,
-      trustScore: 4.3,
-    },
   ],
 }
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { getUserCreatedCampaigns, updateCampaignStatus } = useCampaigns()
-  const userCampaigns = getUserCreatedCampaigns()
-  const { getApplications, removeApplication } = useApplicationStore()
-  const applications = getApplications()
+  const { data: session } = useSession()
+  
+  // ❌ 삭제: const { getApplications, removeApplication } = useApplicationStore()
+  // ❌ 삭제: const applications = getApplications()
+  
   const { getChatsForInfluencer } = useChatStore()
+
+  // ✅ 추가: DB에서 지원 내역 가져오기
+  const [applications, setApplications] = useState<any[]>([])
+  const [loadingApplications, setLoadingApplications] = useState(false)
+
+  // ✅ DB에서 캠페인 목록 가져오기
+  const [userCampaigns, setUserCampaigns] = useState<Campaign[]>([])
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false)
 
   const [isInfluencerMode, setIsInfluencerMode] = useState(true)
   const [isProfileComplete, setIsProfileComplete] = useState(false)
@@ -153,8 +120,9 @@ export default function ProfilePage() {
   const [isInfluencerProfileComplete, setIsInfluencerProfileComplete] = useState(false)
 
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [tempStatus, setTempStatus] = useState("")
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false)
   const [proposalText, setProposalText] = useState("")
@@ -167,9 +135,9 @@ export default function ProfilePage() {
   const [isPromotionAlertOpen, setIsPromotionAlertOpen] = useState(false)
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null)
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
 
-  const [userAvatar, setUserAvatar] = useState("") // Initialize with empty string instead of userData.avatar
+  const [userAvatar, setUserAvatar] = useState("")
   const [avatarPosition, setAvatarPosition] = useState({ x: 0, y: 0 })
   const [avatarScale, setAvatarScale] = useState(1.0)
 
@@ -211,8 +179,6 @@ export default function ProfilePage() {
       hasHashtags: hashtags.length > 0,
     }
 
-    console.log("[v0] Influencer profile completion data:", profileData)
-
     if (profileData.hasAvatar) completion += 16.67
     if (profileData.hasName) completion += 16.67
     if (profileData.hasBio) completion += 16.67
@@ -220,11 +186,57 @@ export default function ProfilePage() {
     if (profileData.hasCategory) completion += 16.67
     if (profileData.hasHashtags) completion += 16.67
 
-    // Round to nearest integer
-    completion = Math.round(completion)
+    return Math.round(completion)
+  }
 
-    console.log("[v0] Influencer profile completion percentage:", completion)
-    return completion
+  // ✅ 추가: DB에서 지원 내역 로드
+  const fetchMyApplications = async () => {
+    if (!session?.user?.id) return
+
+    try {
+      setLoadingApplications(true)
+      console.log("🔍 지원 내역 로드 중...")
+
+      const response = await fetch(`/api/applications?influencer_id=${session.user.id}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("❌ 지원 내역 조회 오류:", data)
+        return
+      }
+
+      console.log("✅ 지원 내역:", data.applications)
+      setApplications(data.applications || [])
+    } catch (error) {
+      console.error("❌ 지원 내역 로드 오류:", error)
+    } finally {
+      setLoadingApplications(false)
+    }
+  }
+
+  // ✅ DB에서 캠페인 목록 로드
+  const fetchUserCampaigns = async () => {
+    if (!session?.user?.id) return
+
+    try {
+      setLoadingCampaigns(true)
+      console.log("🔍 사용자 캠페인 목록 로드 중...")
+
+      const response = await fetch(`/api/campaigns?user_id=${session.user.id}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("❌ 캠페인 조회 오류:", data)
+        return
+      }
+
+      console.log("✅ 캠페인 목록:", data.campaigns)
+      setUserCampaigns(data.campaigns || [])
+    } catch (error) {
+      console.error("❌ 캠페인 목록 로드 오류:", error)
+    } finally {
+      setLoadingCampaigns(false)
+    }
   }
 
   useEffect(() => {
@@ -238,18 +250,12 @@ export default function ProfilePage() {
     const savedUsername = localStorage.getItem("username")
     const savedVerificationStatus = localStorage.getItem("influencer_instagram_verification_status")
 
-    if (savedAvatar) {
-      setUserAvatar(savedAvatar)
-    }
+    if (savedAvatar) setUserAvatar(savedAvatar)
     if (savedPosX && savedPosY) {
       setAvatarPosition({ x: Number.parseFloat(savedPosX), y: Number.parseFloat(savedPosY) })
     }
-    if (savedScale) {
-      setAvatarScale(Number.parseFloat(savedScale))
-    }
-    if (savedUsername) {
-      setUsername(savedUsername)
-    }
+    if (savedScale) setAvatarScale(Number.parseFloat(savedScale))
+    if (savedUsername) setUsername(savedUsername)
     if (savedVerificationStatus) {
       setInstagramVerificationStatus(savedVerificationStatus as "idle" | "pending" | "verified")
     }
@@ -265,6 +271,20 @@ export default function ProfilePage() {
       setIsInfluencerProfileComplete(influencerCompletion === 100)
     }
   }, [])
+
+  // ✅ 인플루언서 모드일 때 지원 내역 로드
+  useEffect(() => {
+    if (isInfluencerMode && session?.user?.id) {
+      fetchMyApplications()
+    }
+  }, [session, isInfluencerMode])
+
+  // ✅ 광고주 모드일 때 캠페인 로드
+  useEffect(() => {
+    if (!isInfluencerMode && session?.user?.id) {
+      fetchUserCampaigns()
+    }
+  }, [session, isInfluencerMode])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -288,10 +308,18 @@ export default function ProfilePage() {
         const isComplete = checkAdvertiserProfileComplete()
         setProfileCompletion(completion)
         setIsProfileComplete(isComplete)
+        // 포커스 시 캠페인 목록도 새로고침
+        if (session?.user?.id) {
+          fetchUserCampaigns()
+        }
       } else {
         const influencerCompletion = calculateInfluencerProfileCompletion()
         setInfluencerProfileCompletion(influencerCompletion)
         setIsInfluencerProfileComplete(influencerCompletion === 100)
+        // ✅ 추가: 포커스 시 지원 내역도 새로고침
+        if (session?.user?.id) {
+          fetchMyApplications()
+        }
       }
     }
 
@@ -301,7 +329,7 @@ export default function ProfilePage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener("focus", handleFocus)
     }
-  }, [isInfluencerMode])
+  }, [isInfluencerMode, session])
 
   useEffect(() => {
     if (isInfluencerMode) {
@@ -321,19 +349,52 @@ export default function ProfilePage() {
     }
   }, [isInfluencerMode])
 
-  const handleStatusEdit = (jobId: number, currentStatus: string) => {
+  const handleStatusEdit = (jobId: string, currentStatus: string) => {
     setSelectedJobId(jobId)
     setTempStatus(currentStatus)
     setIsStatusModalOpen(true)
   }
 
-  const handleStatusApply = () => {
-    if (selectedJobId && tempStatus) {
-      updateCampaignStatus(selectedJobId, tempStatus as "구인 진행 중" | "구인 마감" | "비공개 글")
+  // ✅ DB에 상태 변경 요청
+  const handleStatusApply = async () => {
+    if (!selectedJobId || !tempStatus) return
+
+    try {
+      setUpdatingStatus(true)
+      console.log(`🔄 캠페인 ${selectedJobId} 상태 변경 시도: ${tempStatus}`)
+
+      const response = await fetch(`/api/campaigns/${selectedJobId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: tempStatus,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("❌ 상태 변경 오류:", data)
+        alert(data.error || "상태 변경에 실패했습니다.")
+        return
+      }
+
+      console.log("✅ 상태 변경 성공:", data)
+      alert("캠페인 상태가 변경되었습니다.")
+
+      // 목록 새로고침
+      await fetchUserCampaigns()
+    } catch (error) {
+      console.error("❌ 상태 변경 오류:", error)
+      alert("상태 변경 중 오류가 발생했습니다.")
+    } finally {
+      setUpdatingStatus(false)
+      setIsStatusModalOpen(false)
+      setSelectedJobId(null)
+      setTempStatus("")
     }
-    setIsStatusModalOpen(false)
-    setSelectedJobId(null)
-    setTempStatus("")
   }
 
   const handleProposalEdit = () => {
@@ -367,20 +428,19 @@ export default function ProfilePage() {
     return statusOptions.find((opt) => opt.value === status)?.color || "bg-[#7b68ee] text-white"
   }
 
- const handleLogout = async () => {
-  try {
-    await signOut({ 
-      callbackUrl: '/',
-      redirect: true 
-    })
-  } catch (error) {
-    console.error('로그아웃 오류:', error)
+  const handleLogout = async () => {
+    try {
+      await signOut({
+        callbackUrl: "/",
+        redirect: true,
+      })
+    } catch (error) {
+      console.error("로그아웃 오류:", error)
+    }
   }
-}
 
-  const handleApplicantManagement = (campaignId: number) => {
-    setSelectedCampaignId(campaignId)
-    setIsApplicantModalOpen(true)
+  const handleApplicantManagement = (campaignId: string) => {
+    router.push(`/campaigns/${campaignId}/applicants`)
   }
 
   const handleApplicantClick = (applicantId: number) => {
@@ -392,35 +452,70 @@ export default function ProfilePage() {
     setIsPromotionAlertOpen(true)
   }
 
-  const handleDeleteClick = (applicationId: number) => {
+  const handleDeleteClick = (applicationId: string) => {
     setSelectedApplicationId(applicationId)
     setIsDeleteModalOpen(true)
   }
 
-  const handleDeleteConfirm = () => {
-    if (selectedApplicationId) {
-      removeApplication(selectedApplicationId)
-      console.log("[v0] Deleted application:", selectedApplicationId)
+  // ✅ 수정: DB API 호출로 지원 취소
+  const handleDeleteConfirm = async () => {
+    if (!selectedApplicationId) return
+
+    try {
+      console.log("🔍 지원 취소 시도:", selectedApplicationId)
+
+      const response = await fetch(`/api/applications/${selectedApplicationId}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("❌ 지원 취소 오류:", data)
+        alert(data.error || "지원 취소에 실패했습니다.")
+        return
+      }
+
+      console.log("✅ 지원 취소 성공")
+      alert("지원이 취소되었습니다.")
+
+      // 목록 새로고침
+      await fetchMyApplications()
+    } catch (error) {
+      console.error("❌ 지원 취소 오류:", error)
+      alert("지원 취소 중 오류가 발생했습니다.")
+    } finally {
+      setIsDeleteModalOpen(false)
+      setSelectedApplicationId(null)
     }
-    setIsDeleteModalOpen(false)
-    setSelectedApplicationId(null)
   }
 
   const isChatAccepted = (campaignId: number) => {
-    const chats = getChatsForInfluencer(1) // Assuming influencer ID is 1
+    const chats = getChatsForInfluencer(1)
     return chats.some(
       (chat) => chat.campaignId === campaignId && (chat.status === "accepted" || chat.status === "active"),
     )
   }
 
   const handleChatClick = (campaignId: number) => {
-    const chats = getChatsForInfluencer(1) // Assuming influencer ID is 1
+    const chats = getChatsForInfluencer(1)
     const chat = chats.find(
       (chat) => chat.campaignId === campaignId && (chat.status === "accepted" || chat.status === "active"),
     )
     if (chat) {
       router.push(`/chat/${chat.id}`)
     }
+  }
+
+  // ✅ 리워드 표시 함수 추가
+  const getRewardDisplay = (campaign: Campaign) => {
+    if (campaign.reward_type === "payment" && campaign.payment_amount) {
+      return campaign.payment_amount
+    }
+    if (campaign.reward_type === "product") {
+      return "제품 제공"
+    }
+    return "협의"
   }
 
   if (!isInfluencerMode) {
@@ -454,8 +549,8 @@ export default function ProfilePage() {
 
                   <div className="flex items-center gap-2">
                     <h2 className={`text-xl font-bold ${username ? "text-gray-900" : "text-gray-400"}`}>
-  {isProfileComplete ? (username || "프로필 변경하기") : "프로필을 완성하세요"}
-</h2>
+                      {isProfileComplete ? username || "프로필 변경하기" : "프로필을 완성하세요"}
+                    </h2>
                     {instagramVerificationStatus === "verified" && (
                       <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
                         <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
@@ -545,7 +640,12 @@ export default function ProfilePage() {
           <div className="space-y-4 mt-8">
             <h3 className="text-lg font-semibold text-gray-900">캠페인 관리</h3>
 
-            {userCampaigns.length === 0 ? (
+            {loadingCampaigns ? (
+              <div className="bg-gray-100 rounded-2xl p-8 text-center">
+                <Loader2 className="h-12 w-12 text-[#7b68ee] mx-auto mb-3 animate-spin" />
+                <p className="text-gray-600 text-sm">캠페인을 불러오는 중...</p>
+              </div>
+            ) : userCampaigns.length === 0 ? (
               <div className="bg-gray-100 rounded-2xl p-8 text-center">
                 <Megaphone className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600 text-sm">작성한 캠페인이 없습니다</p>
@@ -577,14 +677,15 @@ export default function ProfilePage() {
 
                             <div className="space-y-0.5">
                               <div className="flex items-center gap-2">
-                                <p className="text-base font-bold text-black">{campaign.reward}</p>
+                                <p className="text-base font-bold text-black">{getRewardDisplay(campaign)}</p>
                               </div>
-                              {campaign.recruitCount && (
+                              {/* ✅ snake_case 사용 */}
+                              {campaign.recruit_count && (
                                 <p className="text-sm text-gray-600">
                                   <span className="text-sm text-[#7b68ee] font-semibold">
                                     {campaign.applicants || 0}
                                   </span>
-                                  <span className="text-sm">/{campaign.recruitCount}</span>{" "}
+                                  <span className="text-sm">/{campaign.recruit_count}</span>{" "}
                                   <span className="text-xs text-gray-500">명 모집중</span>
                                 </p>
                               )}
@@ -686,7 +787,8 @@ export default function ProfilePage() {
                     <button
                       key={option.value}
                       onClick={() => setTempStatus(option.value)}
-                      className={`w-full p-3 rounded-lg text-left transition-colors ${
+                      disabled={updatingStatus}
+                      className={`w-full p-3 rounded-lg text-left transition-colors disabled:opacity-50 ${
                         tempStatus === option.value
                           ? "bg-[#7b68ee] text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -701,90 +803,26 @@ export default function ProfilePage() {
             <DrawerFooter className="pt-3 pb-6">
               <div className="flex gap-2">
                 <DrawerClose asChild>
-                  <Button variant="outline" className="flex-[3] bg-transparent h-12">
+                  <Button variant="outline" className="flex-[3] bg-transparent h-12" disabled={updatingStatus}>
                     취소
                   </Button>
                 </DrawerClose>
-                <Button onClick={handleStatusApply} className="flex-[7] bg-[#7b68ee] hover:bg-[#7b68ee]/90 h-12">
-                  적용
+                <Button
+                  onClick={handleStatusApply}
+                  className="flex-[7] bg-[#7b68ee] hover:bg-[#7b68ee]/90 h-12"
+                  disabled={updatingStatus}
+                >
+                  {updatingStatus ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      변경 중...
+                    </>
+                  ) : (
+                    "적용"
+                  )}
                 </Button>
               </div>
             </DrawerFooter>
-          </DrawerContent>
-        </Drawer>
-
-        <Drawer open={isApplicantModalOpen} onOpenChange={setIsApplicantModalOpen}>
-          <DrawerContent className="rounded-t-3xl [&>div:first-child]:hidden max-h-[80vh]">
-            <div className="flex justify-center pt-4 pb-2">
-              <div className="w-12 h-1 bg-gray-300 rounded-full" />
-            </div>
-            <div className="px-4 pt-2 pb-4">
-              <h3 className="font-semibold text-lg mb-4">지원자 목록</h3>
-              <div className="space-y-3 overflow-y-auto max-h-[60vh]">
-                {selectedCampaignId &&
-                  mockApplicantsData[selectedCampaignId]?.map((applicant) => (
-                    <div
-                      key={applicant.id}
-                      onClick={() => handleApplicantClick(applicant.id)}
-                      className="bg-gray-50 rounded-xl p-4 cursor-pointer hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={applicant.avatar || "/placeholder.svg"} alt={applicant.name} />
-                          <AvatarFallback>{applicant.name[0]}</AvatarFallback>
-                        </Avatar>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold text-black">{applicant.name}</h4>
-                            {applicant.verified && (
-                              <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
-                                <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
-                            <div className="flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              <span>{applicant.followers}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <TrendingUp className="h-3 w-3" />
-                              <span>{applicant.engagement}%</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                              <span>{applicant.trustScore}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="bg-[#7b68ee]/10 text-[#7b68ee] font-medium text-xs px-2 py-1 rounded">
-                              {applicant.category}
-                            </span>
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <MapPin className="h-3 w-3" />
-                              <span>{applicant.region}</span>
-                            </div>
-                          </div>
-
-                          <div className="text-sm font-semibold text-[#7b68ee] mt-2">협업비: {applicant.price}</div>
-                        </div>
-
-                        <ChevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                      </div>
-                    </div>
-                  ))}
-
-                {selectedCampaignId && !mockApplicantsData[selectedCampaignId] && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-2" />
-                    <p>아직 지원자가 없습니다</p>
-                  </div>
-                )}
-              </div>
-            </div>
           </DrawerContent>
         </Drawer>
 
@@ -833,8 +871,8 @@ export default function ProfilePage() {
 
                 <div className="flex items-center gap-2">
                   <h2 className={`text-xl font-bold ${username ? "text-gray-900" : "text-gray-400"}`}>
-  {isProfileComplete ? (username || "프로필 변경하기") : "프로필을 완성하세요"}
-</h2>
+                    {isProfileComplete ? (username || "프로필 변경하기") : "프로필을 완성하세요"}
+                  </h2>
                   {instagramVerificationStatus === "verified" && (
                     <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center">
                       <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
@@ -922,7 +960,13 @@ export default function ProfilePage() {
         <div className="space-y-4 mt-8">
           <h3 className="text-lg font-semibold text-gray-900">지원 내역</h3>
 
-          {applications.length === 0 ? (
+          {/* ✅ 추가: 로딩 상태 및 DB 데이터 표시 */}
+          {loadingApplications ? (
+            <div className="bg-gray-100 rounded-2xl p-8 text-center">
+              <Loader2 className="h-12 w-12 text-[#7b68ee] mx-auto mb-3 animate-spin" />
+              <p className="text-gray-600 text-sm">지원 내역을 불러오는 중...</p>
+            </div>
+          ) : applications.length === 0 ? (
             <div className="bg-gray-100 rounded-2xl p-8 text-center">
               <FileCheck className="h-12 w-12 text-gray-300 mx-auto mb-2" />
               <p className="text-gray-600 text-sm">아직 지원한 캠페인이 없습니다</p>
