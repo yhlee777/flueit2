@@ -2,46 +2,24 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Users, Megaphone } from "lucide-react"
 
 export default function SelectUserTypePage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [selectedType, setSelectedType] = useState<"INFLUENCER" | "ADVERTISER" | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!selectedType) {
       alert("회원 유형을 선택해주세요.")
       return
     }
 
-    setIsLoading(true)
-
-    try {
-      const response = await fetch('/api/auth/update-user-type', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userType: selectedType }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        // localStorage에도 저장 (기존 코드와의 호환성)
-        localStorage.setItem('influencer_mode', selectedType === 'INFLUENCER' ? 'true' : 'false')
-        
-        // 캠페인 페이지로 리다이렉트
-        router.push('/campaigns')
-      } else {
-        alert(data.error || '회원 유형 저장에 실패했습니다.')
-        setIsLoading(false)
-      }
-    } catch (error) {
-      console.error('회원 유형 저장 오류:', error)
-      alert('오류가 발생했습니다.')
-      setIsLoading(false)
+    // 선택한 타입에 따라 회원가입 페이지로 이동
+    if (selectedType === "INFLUENCER") {
+      router.push('/signup/influencer')
+    } else if (selectedType === "ADVERTISER") {
+      router.push('/signup/advertiser')
     }
   }
 
@@ -111,10 +89,10 @@ export default function SelectUserTypePage() {
 
         <Button
           onClick={handleSubmit}
-          disabled={!selectedType || isLoading}
+          disabled={!selectedType}
           className="w-full bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-semibold py-6 rounded-2xl text-lg"
         >
-          {isLoading ? "저장 중..." : "시작하기"}
+          다음
         </Button>
       </div>
     </div>

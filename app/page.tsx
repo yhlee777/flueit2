@@ -18,11 +18,18 @@ export default function LandingPage() {
 
   // ✅ 로그인 상태 확인 및 리다이렉트
   useEffect(() => {
-    if (status === 'authenticated' && session) {
-      console.log('✅ 로그인 상태 확인됨, 캠페인 페이지로 이동')
-      router.push('/campaigns')
+  if (status === 'authenticated' && session) {
+    // 관리자면 관리자 페이지로
+    if (session.user?.is_admin === true) {
+      console.log('🔑 관리자 계정, 관리자 페이지로 이동')
+      router.push('/admin/pending-users')
+      return
     }
-  }, [status, session, router])
+    // 일반 사용자는 캠페인 페이지로
+    console.log('✅ 로그인 상태 확인됨, 캠페인 페이지로 이동')
+    router.push('/campaigns')
+  }
+}, [status, session, router])
 
   // ✅ 자동 온보딩 모달 제거 - 이 useEffect를 삭제했습니다
 

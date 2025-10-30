@@ -103,17 +103,40 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
   }
 
   // ✅ 제안서 모달 열기
-  const openProposalModal = () => {
-    if (!session?.user) {
-      alert("로그인이 필요합니다.")
-      router.push("/login")
-      return
+  // ✅ 제안서 모달 열기 - 제안서 관리에서 저장된 멘트 불러오기
+const openProposalModal = async () => {
+  if (!session?.user) {
+    alert("로그인이 필요합니다.")
+    router.push("/login")
+    return
+  }
+
+  try {
+    // 프로필에서 저장된 제안서 템플릿 가져오기
+    const profileResponse = await fetch('/api/user/profile')
+    const profileData = await profileResponse.json()
+
+    let defaultMessage = `안녕하세요!\n\n"${campaign.title}" 캠페인에 협업 제안 드립니다.\n\n저의 콘텐츠와 잘 맞을 것 같아 지원하게 되었습니다.\n함께 멋진 콘텐츠를 만들고 싶습니다!\n\n감사합니다.`
+
+    // ✅ 제안서 관리에 저장된 멘트가 있으면 그걸 사용
+    if (profileResponse.ok && profileData.profile?.proposal_text) {
+      defaultMessage = profileData.profile.proposal_text
+      console.log('✅ 제안서 관리에서 저장된 멘트 불러오기 성공')
+    } else {
+      console.log('📝 제안서 관리에 저장된 멘트가 없어 기본 메시지 사용')
     }
 
-    // 기본 메시지 설정
-    setProposalMessage(`안녕하세요!\n\n"${campaign.title}" 캠페인에 협업 제안 드립니다.\n\n저의 콘텐츠와 잘 맞을 것 같아 지원하게 되었습니다.\n함께 멋진 콘텐츠를 만들고 싶습니다!\n\n감사합니다.`)
+    setProposalMessage(defaultMessage)
+    setProposalOpen(true)
+  } catch (error) {
+    console.error('❌ 제안서 템플릿 로드 오류:', error)
+    
+    // 에러 시 기본 메시지 사용
+    const defaultMessage = `안녕하세요!\n\n"${campaign.title}" 캠페인에 협업 제안 드립니다.\n\n저의 콘텐츠와 잘 맞을 것 같아 지원하게 되었습니다.\n함께 멋진 콘텐츠를 만들고 싶습니다!\n\n감사합니다.`
+    setProposalMessage(defaultMessage)
     setProposalOpen(true)
   }
+}
 
   // ✅ 제안서 전송
   const handleSendProposal = async () => {
