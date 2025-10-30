@@ -1,469 +1,238 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { TopHeader } from "@/components/top-header"
 import { Button } from "@/components/ui/button"
-
-import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Heart, Eye, Users, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { Check, MapPin, Users, BarChart3, Heart, ChevronLeft } from "lucide-react"
-import { useCampaigns } from "@/lib/campaign-store"
 
-// Sample influencer data (same as in influencers page)
-const allInfluencers = [
-  {
-    id: 1,
-    name: "김소영",
-    followers: "33000",
-    followersDisplay: "3.3만",
-    engagement: "3.3%",
-    category: "패션·잡화",
-    region: "서울시 성동구",
-    avatar: "/korean-fashion-influencer-woman-stylish-outfit.jpg",
-    verified: true,
-    hashtags: ["#스타일링", "#패션", "#패션디자인"],
-  },
-  {
-    id: 2,
-    name: "박지민",
-    followers: "52000",
-    followersDisplay: "5.2만",
-    engagement: "4.1%",
-    category: "뷰티·화장품",
-    region: "서울시 강남구",
-    avatar: "/korean-beauty-influencer-woman-makeup-skincare.jpg",
-    verified: true,
-    hashtags: ["#뷰티", "#메이크업", "#스킨케어"],
-  },
-  {
-    id: 3,
-    name: "이준호",
-    followers: "28000",
-    followersDisplay: "2.8만",
-    engagement: "5.2%",
-    category: "리빙·인테리어",
-    region: "서울시 마포구",
-    avatar: "/korean-lifestyle-influencer-man-home-interior-desi.jpg",
-    verified: true,
-    hashtags: ["#홈카페", "#인테리어", "#플랜테리어"],
-  },
-  {
-    id: 4,
-    name: "최유진",
-    followers: "81000",
-    followersDisplay: "8.1만",
-    engagement: "3.8%",
-    category: "테크·가전",
-    region: "서울시 서초구",
-    avatar: "/korean-tech-influencer-woman-gadgets-technology.jpg",
-    verified: true,
-    hashtags: ["#테크", "#리뷰", "#가젯"],
-  },
-  {
-    id: 5,
-    name: "한서연",
-    followers: "45000",
-    followersDisplay: "4.5만",
-    engagement: "3.9%",
-    category: "패션·잡화",
-    region: "서울시 홍대",
-    avatar: "/korean-street-fashion-influencer-woman-vintage-sty.jpg",
-    verified: true,
-    hashtags: ["#스트릿패션", "#빈티지", "#코디"],
-  },
-  {
-    id: 6,
-    name: "정민아",
-    followers: "63000",
-    followersDisplay: "6.3만",
-    engagement: "4.7%",
-    category: "뷰티·화장품",
-    region: "서울시 압구정",
-    avatar: "/korean-beauty-guru-woman-cosmetics-review.jpg",
-    verified: true,
-    hashtags: ["#화장품", "#리뷰", "#뷰티팁"],
-  },
-  {
-    id: 7,
-    name: "김태현",
-    followers: "31000",
-    followersDisplay: "3.1만",
-    engagement: "5.8%",
-    category: "리빙·인테리어",
-    region: "서울시 용산구",
-    avatar: "/korean-home-lifestyle-influencer-man-minimalist-in.jpg",
-    verified: false,
-    hashtags: ["#미니멀", "#인테리어", "#홈데코"],
-  },
-  {
-    id: 8,
-    name: "송하늘",
-    followers: "72000",
-    followersDisplay: "7.2만",
-    engagement: "4.3%",
-    category: "푸드·외식",
-    region: "서울시 종로구",
-    avatar: "/korean-food-influencer-woman-cooking-restaurant-re.jpg",
-    verified: true,
-    hashtags: ["#맛집", "#요리", "#레시피"],
-  },
-  {
-    id: 9,
-    name: "윤도현",
-    followers: "39000",
-    followersDisplay: "3.9만",
-    engagement: "6.1%",
-    category: "헬스·피트니스",
-    region: "서울시 강남구",
-    avatar: "/korean-fitness-influencer-man-workout-gym-training.jpg",
-    verified: true,
-    hashtags: ["#헬스", "#운동", "#다이어트"],
-  },
-  {
-    id: 10,
-    name: "임수빈",
-    followers: "24000",
-    followersDisplay: "2.4만",
-    engagement: "7.2%",
-    category: "반려동물",
-    region: "서울시 성북구",
-    avatar: "/korean-pet-influencer-woman-cute-dog-cat.jpg",
-    verified: false,
-    hashtags: ["#반려견", "#펫스타그램", "#강아지"],
-  },
-  {
-    id: 11,
-    name: "조민석",
-    followers: "58000",
-    followersDisplay: "5.8만",
-    engagement: "4.5%",
-    category: "숙박·여행",
-    region: "부산시 해운대구",
-    avatar: "/korean-travel-influencer-man-backpack-adventure.jpg",
-    verified: true,
-    hashtags: ["#여행", "#부산", "#맛집투어"],
-  },
-  {
-    id: 12,
-    name: "강예린",
-    followers: "41000",
-    followersDisplay: "4.1만",
-    engagement: "5.3%",
-    category: "베이비·키즈",
-    region: "서울시 송파구",
-    avatar: "/korean-mom-influencer-woman-baby-kids-parenting.jpg",
-    verified: true,
-    hashtags: ["#육아", "#베이비", "#맘스타그램"],
-  },
-]
+interface Campaign {
+  id: string
+  title: string
+  category: string
+  status: string
+  thumbnail: string
+  reward_type: string
+  payment_amount: string | null
+  product_name: string | null
+  other_reward: string | null
+  views: number
+  applicants: number
+  recruit_count: number
+  created_at: string
+}
 
-export default function FavoritesPage() {
-  const [favoriteIds, setFavoriteIds] = useState<number[]>([])
-  const [favoriteCampaignIds, setFavoriteCampaignIds] = useState<number[]>([])
+export default function FavoriteCampaignsPage() {
   const router = useRouter()
-  const pathname = usePathname()
-  const [isInfluencerMode, setIsInfluencerMode] = useState(false)
-  const { campaigns } = useCampaigns()
+  const [favoriteCampaigns, setFavoriteCampaigns] = useState<Campaign[]>([])
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const influencerMode = localStorage.getItem("influencer_mode") === "true"
-    setIsInfluencerMode(influencerMode)
-    console.log("[v0] Influencer mode:", influencerMode)
-
-    if (influencerMode) {
-      const savedFavorites = localStorage.getItem("campaign-favorites")
-      console.log("[v0] Loading saved campaign favorites:", savedFavorites)
-      if (savedFavorites) {
-        const parsedFavorites = JSON.parse(savedFavorites)
-        console.log("[v0] Parsed campaign favorites:", parsedFavorites)
-        setFavoriteCampaignIds(parsedFavorites)
-      }
-    } else {
-      const savedFavorites = localStorage.getItem("favorites")
-      console.log("[v0] Loading saved favorites:", savedFavorites)
-      if (savedFavorites) {
-        const parsedFavorites = JSON.parse(savedFavorites)
-        console.log("[v0] Parsed favorites:", parsedFavorites)
-        setFavoriteIds(parsedFavorites)
-      }
-    }
+    loadFavoriteCampaigns()
   }, [])
 
-  const favoriteInfluencers = allInfluencers.filter((influencer) => favoriteIds.includes(influencer.id))
-  const favoriteCampaigns = campaigns.filter((campaign) => favoriteCampaignIds.includes(campaign.id))
+  const loadFavoriteCampaigns = async () => {
+    try {
+      // localStorage에서 찜한 캠페인 ID 가져오기
+      const favorites = JSON.parse(localStorage.getItem("favorite_campaigns") || "[]")
+      setFavoriteIds(favorites)
 
-  const toggleFavorite = (influencerId: number) => {
-    console.log("[v0] Toggling favorite for influencer:", influencerId)
-    const newFavorites = favoriteIds.includes(influencerId)
-      ? favoriteIds.filter((id) => id !== influencerId)
-      : [...favoriteIds, influencerId]
+      if (favorites.length === 0) {
+        setLoading(false)
+        return
+      }
 
-    console.log("[v0] New favorites array:", newFavorites)
+      // 각 캠페인 정보 가져오기
+      const campaigns = await Promise.all(
+        favorites.map(async (id: string) => {
+          try {
+            const response = await fetch(`/api/campaigns/${id}`)
+            const data = await response.json()
+            return data.campaign
+          } catch (error) {
+            console.error(`캠페인 ${id} 로드 오류:`, error)
+            return null
+          }
+        })
+      )
+
+      // null이 아닌 캠페인만 필터링
+      const validCampaigns = campaigns.filter((c) => c !== null)
+      setFavoriteCampaigns(validCampaigns)
+    } catch (error) {
+      console.error("찜한 캠페인 로드 오류:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 찜하기 취소
+  const removeFavorite = (campaignId: string) => {
+    const newFavorites = favoriteIds.filter((id) => id !== campaignId)
+    localStorage.setItem("favorite_campaigns", JSON.stringify(newFavorites))
     setFavoriteIds(newFavorites)
-    localStorage.setItem("favorites", JSON.stringify(newFavorites))
+    setFavoriteCampaigns(favoriteCampaigns.filter((c) => c.id !== campaignId))
   }
 
-  const toggleCampaignFavorite = (campaignId: number) => {
-    console.log("[v0] Toggling favorite for campaign:", campaignId)
-    const newFavorites = favoriteCampaignIds.includes(campaignId)
-      ? favoriteCampaignIds.filter((id) => id !== campaignId)
-      : [...favoriteCampaignIds, campaignId]
+  // 모두 삭제
+  const clearAllFavorites = () => {
+    if (!confirm("찜한 캠페인을 모두 삭제하시겠습니까?")) return
 
-    console.log("[v0] New campaign favorites array:", newFavorites)
-    setFavoriteCampaignIds(newFavorites)
-    localStorage.setItem("campaign-favorites", JSON.stringify(newFavorites))
+    localStorage.setItem("favorite_campaigns", JSON.stringify([]))
+    setFavoriteIds([])
+    setFavoriteCampaigns([])
   }
 
-  const ProfileCard = ({ influencer }: { influencer: any }) => {
-    const displayHashtags = influencer.hashtags.slice(0, 2)
-    const remainingCount = influencer.hashtags.length - 2
+  // 리워드 텍스트 생성
+  const getRewardText = (campaign: Campaign) => {
+    if (campaign.reward_type === "payment") {
+      if (campaign.payment_amount === "인플루언서와 직접 협의") {
+        return "💰 협의 후 결정"
+      }
+      return `💰 ${campaign.payment_amount}만원`
+    } else if (campaign.reward_type === "product") {
+      return `🎁 ${campaign.product_name || "제품 제공"}`
+    } else if (campaign.reward_type === "other") {
+      return `✨ ${campaign.other_reward || "기타 보상"}`
+    }
+    return "협의 후 결정"
+  }
 
+  if (loading) {
     return (
-      <Card className="bg-white rounded-2xl overflow-hidden shadow-sm p-0 h-[230px]">
-        <CardContent className="p-0 h-full">
-          <Link href={`/influencers/${influencer.id}`}>
-            <div className="relative h-full flex flex-col">
-              <div className="w-full h-32 bg-white relative overflow-hidden rounded-t-2xl">
-                <img
-                  src={influencer.avatar || "/placeholder.svg"}
-                  alt={influencer.name}
-                  className="w-full h-full object-cover rounded-bl-lg rounded-br-lg"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 h-8 w-8 bg-white/5 hover:bg-white/10 rounded-full"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    toggleFavorite(influencer.id)
-                  }}
-                >
-                  <Heart
-                    className={`w-4 h-4 ${
-                      favoriteIds.includes(influencer.id) ? "text-red-500 fill-red-500" : "text-gray-600 fill-gray-600"
-                    }`}
-                  />
-                </Button>
-                <div className="absolute bottom-2 left-2">
-                  <span className="bg-white/90 text-[#7b68ee] font-semibold text-xs rounded-full px-1.5 py-0.5">
-                    {influencer.category}
-                  </span>
-                </div>
-              </div>
-
-              <div className="h-[92px] p-2 flex flex-col justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1">
-                    <h3 className="font-semibold text-sm leading-tight">{influencer.name}</h3>
-                    {influencer.verified && (
-                      <div className="w-4 h-4 bg-[#7b68ee] rounded-full flex items-center justify-center flex-shrink-0">
-                        <Check className="w-2.5 h-2.5 text-white stroke-[4]" />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 text-xs text-gray-400 leading-tight">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{influencer.region}</span>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-xs leading-tight">
-                    <span className="flex items-center gap-2 text-black font-semibold">
-                      <Users className="w-3 h-3 flex-shrink-0 text-gray-400" />
-                      <span className="text-sm">{influencer.followersDisplay}</span>
-                    </span>
-                    <span className="flex items-center gap-2 text-black font-semibold">
-                      <BarChart3 className="w-3 h-3 flex-shrink-0 text-gray-400" />
-                      <span className="text-sm">{influencer.engagement}</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-1 items-center mt-1 mb-1">
-                  {displayHashtags.map((tag, index) => (
-                    <span key={index} className="text-xs text-blue-500 leading-tight">
-                      {tag}
-                    </span>
-                  ))}
-                  {remainingCount > 0 && <span className="text-xs text-blue-500 leading-tight">+{remainingCount}</span>}
-                </div>
-              </div>
-            </div>
-          </Link>
-        </CardContent>
-      </Card>
+      <div className="min-h-screen bg-white">
+        <TopHeader title="찜한 캠페인" showBack={true} />
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7b68ee] mx-auto mb-4"></div>
+            <p className="text-gray-500">불러오는 중...</p>
+          </div>
+        </div>
+      </div>
     )
   }
 
-  const CampaignCard = ({ campaign }: { campaign: any }) => {
-    const getNegotiationText = (campaign: any) => {
-      if (campaign.isDealPossible) {
-        return { text: "딜 가능", color: "text-[#7b68ee] bg-[#7b68ee]/10" }
-      }
-      if (campaign.negotiationOption === "yes") {
-        return { text: "협의 가능", color: "text-gray-400 bg-gray-100" }
-      } else if (campaign.negotiationOption === "no") {
-        return { text: "협의 불가", color: "text-gray-400 bg-gray-100" }
-      }
-      return null
-    }
+  return (
+    <div className="min-h-screen bg-white pb-20">
+      <TopHeader title="찜한 캠페인" showBack={true} />
 
-    return (
-      <Card className="bg-white rounded-2xl overflow-hidden shadow-sm p-0">
-        <CardContent className="p-0">
-          <Link href={`/campaigns/${campaign.id}`}>
-            <div className="py-4 px-3 hover:bg-gray-50 transition-colors duration-200 cursor-pointer relative">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-4 right-3 h-8 w-8 bg-white hover:bg-gray-100 rounded-full z-10"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  toggleCampaignFavorite(campaign.id)
-                }}
-              >
-                <Heart
-                  className={`w-4 h-4 ${
-                    favoriteCampaignIds.includes(campaign.id)
-                      ? "text-red-500 fill-red-500"
-                      : "text-gray-600 fill-gray-600"
-                  }`}
-                />
-              </Button>
+      {/* 헤더 */}
+      <div className="px-4 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">찜한 캠페인</h2>
+            <p className="text-sm text-gray-500 mt-1">총 {favoriteCampaigns.length}개</p>
+          </div>
+          {favoriteCampaigns.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFavorites}
+              className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              전체 삭제
+            </Button>
+          )}
+        </div>
+      </div>
 
-              <div className="flex gap-3">
-                <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+      {/* 캠페인 목록 */}
+      {favoriteCampaigns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Heart className="w-10 h-10 text-gray-300" />
+          </div>
+          <p className="text-gray-900 font-medium text-lg mb-2">찜한 캠페인이 없습니다</p>
+          <p className="text-gray-500 text-sm text-center mb-6">
+            마음에 드는 캠페인을 찜해보세요.
+            <br />
+            나중에 다시 확인할 수 있습니다.
+          </p>
+          <Button
+            onClick={() => router.push("/campaigns")}
+            className="bg-[#7b68ee] hover:bg-[#6a5acd] text-white"
+          >
+            캠페인 둘러보기
+          </Button>
+        </div>
+      ) : (
+        <div className="px-4 py-4 space-y-4">
+          {favoriteCampaigns.map((campaign) => (
+            <div
+              key={campaign.id}
+              className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow relative"
+            >
+              <Link href={`/campaigns/${campaign.id}`}>
+                {/* 썸네일 */}
+                <div className="relative h-48">
                   <img
                     src={campaign.thumbnail || "/placeholder.svg"}
                     alt={campaign.title}
                     className="w-full h-full object-cover"
                   />
+                  {/* 상태 배지 */}
+                  <div className="absolute top-2 left-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        campaign.status === "구인 진행 중"
+                          ? "bg-[#7b68ee] text-white"
+                          : campaign.status === "구인 마감"
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {campaign.status}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex-1 flex flex-col justify-between pr-8">
-                  <div className="space-y-1">
-                    <div className="mb-1">
-                      <span className="bg-white/90 text-[#7b68ee] font-semibold text-xs px-2 py-1 rounded-full border border-gray-200">
-                        {campaign.category}
-                      </span>
+                {/* 정보 */}
+                <div className="p-4">
+                  {/* 카테고리 */}
+                  <span className="inline-block px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded mb-2">
+                    {campaign.category}
+                  </span>
+
+                  {/* 제목 */}
+                  <h3 className="font-bold text-gray-900 mb-2 line-clamp-2">{campaign.title}</h3>
+
+                  {/* 리워드 */}
+                  <p className="text-[#7b68ee] font-semibold mb-3">{getRewardText(campaign)}</p>
+
+                  {/* 통계 */}
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <Eye className="w-4 h-4" />
+                      <span>{campaign.views || 0}</span>
                     </div>
-                    <h3 className="font-semibold text-sm text-black leading-tight line-clamp-1">{campaign.title}</h3>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-base font-bold text-black">{campaign.reward}</p>
-                        {getNegotiationText(campaign) && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${getNegotiationText(campaign).color}`}>
-                            {getNegotiationText(campaign).text}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        {campaign.recruitCount && (
-                          <p className="text-sm text-gray-600">
-                            <span className="text-sm text-[#7b68ee] font-semibold">{campaign.applicants || 0}</span>
-                            <span className="text-sm">/{campaign.recruitCount}</span>{" "}
-                            <span className="text-xs text-gray-500">명 모집중</span>
-                          </p>
-                        )}
-                        {campaign.confirmedApplicants &&
-                          campaign.recruitCount &&
-                          campaign.confirmedApplicants / campaign.recruitCount >= 0.7 && (
-                            <span className="bg-orange-500/10 text-orange-500 text-xs px-2 py-1 rounded font-medium ml-2">
-                              마감 임박
-                            </span>
-                          )}
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex items-center gap-1">
-                            <Heart className="w-4 h-4 text-gray-400" />
-                            <span className="text-xs text-gray-500">{campaign.likes}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="w-4 h-4 text-gray-400">💬</span>
-                            <span className="text-xs text-gray-500">{campaign.comments}</span>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      <span>
+                        {campaign.applicants || 0}/{campaign.recruit_count}명
+                      </span>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </Link>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="sticky top-0 z-40 bg-white border-b border-border" style={{ height: "var(--gnb-height)" }}>
-        <div className="flex items-center justify-between px-4 h-full">
-          <div className="flex items-center">
-            <button onClick={() => router.back()} className="flex items-center gap-2 cursor-pointer">
-              <ChevronLeft className="h-4 w-4 text-gray-400" />
-              <span className="text-sm font-medium text-gray-700">뒤로 가기</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="px-4 py-6 space-y-4">
-        {isInfluencerMode ? (
-          favoriteCampaigns.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 space-y-4">
-              <Heart className="w-16 h-16 text-gray-300" />
-              <div className="text-center space-y-2">
-                <h3 className="text-lg font-semibold text-gray-600">찜한 캠페인이 없습니다</h3>
-                <p className="text-sm text-gray-500">마음에 드는 캠페인을 찜해보세요!</p>
-              </div>
-              <Link href="/campaigns">
-                <Button className="bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white px-6 py-2 rounded-full">
-                  캠페인 찾아보기
-                </Button>
               </Link>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">찜한 캠페인 ({favoriteCampaigns.length})</h2>
-              </div>
 
-              <div className="space-y-3">
-                {favoriteCampaigns.map((campaign) => (
-                  <CampaignCard key={campaign.id} campaign={campaign} />
-                ))}
-              </div>
+              {/* 찜하기 취소 버튼 */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  removeFavorite(campaign.id)
+                }}
+                className="absolute top-2 right-2 w-9 h-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-sm transition-all"
+              >
+                <Heart className="w-5 h-5 fill-red-500 text-red-500" />
+              </button>
             </div>
-          )
-        ) : favoriteInfluencers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-4">
-            <Heart className="w-16 h-16 text-gray-300" />
-            <div className="text-center space-y-2">
-              <h3 className="text-lg font-semibold text-gray-600">찜한 파트너가 없습니다</h3>
-              <p className="text-sm text-gray-500">마음에 드는 파트너를 찜해보세요!</p>
-            </div>
-            <Link href="/influencers">
-              <Button className="bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white px-6 py-2 rounded-full">
-                파트너 찾아보기
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">찜한 파트너 ({favoriteInfluencers.length})</h2>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-3 gap-y-3">
-              {favoriteInfluencers.map((influencer) => (
-                <ProfileCard key={influencer.id} influencer={influencer} />
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

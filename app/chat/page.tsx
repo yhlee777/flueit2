@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { MoreVertical, Search, X, Archive, CheckCheck, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect, useMemo } from "react"
-import { useChats, useOnlineStatus, useNotifications, useSoundEffects } from "@/lib/use-supabase-chat"
-import { archiveChat, deleteChat, markMessagesAsRead, searchChats } from "@/lib/supabase-chat-service"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase-client"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,72 +21,132 @@ import {
 type FilterType = "all" | "unread" | "active"
 
 export default function ChatPage() {
+  const router = useRouter()
+  const { data: session, status } = useSession()
+  
   const [activeFilter, setActiveFilter] = useState<FilterType>("all")
   const [isInfluencerMode, setIsInfluencerMode] = useState(false)
-  const [userId, setUserId] = useState<number>(1)
   const [searchQuery, setSearchQuery] = useState("")
   const [showSearch, setShowSearch] = useState(false)
-  const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  
+  // API에서 가져온 데이터
+  const [chats, setChats] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [unreadCount, setUnreadCount] = useState(0)
 
-  // Supabase 훅
-  const { chats, loading, unreadCount, refresh } = useChats(userId, isInfluencerMode ? "influencer" : "advertiser")
-  const isOnline = useOnlineStatus()
-  const { permission, requestPermission, sendNotification } = useNotifications()
-  const { playMessageSound } = useSoundEffects(true)
-
-  // 초기 설정
+  // 초기 설정 및 데이터 로드
   useEffect(() => {
+    if (status === "loading") return
+    
+    if (status === "unauthenticated") {
+      router.push("/login")
+      return
+    }
+
     const influencerMode = localStorage.getItem("influencer_mode") === "true"
     setIsInfluencerMode(influencerMode)
-    
-    // 실제로는 인증된 사용자 ID 사용
-    // const user = await getCurrentUser()
-    // setUserId(user.id)
-    setUserId(1)
 
-    // 알림 권한 요청
-    if (permission === 'default') {
-      requestPermission()
+    if (session?.user?.id) {
+      loadChats()
     }
-  }, [permission, requestPermission])
+  }, [session, status, router])
 
-  // 검색 처리
+  // ✅ 실시간 구독 (Supabase Realtime)
   useEffect(() => {
-    const searchDebounce = setTimeout(async () => {
-      if (searchQuery.trim()) {
-        setIsSearching(true)
-        const { data } = await searchChats(
-          userId,
-          isInfluencerMode ? "influencer" : "advertiser",
-          searchQuery
-        )
-        setSearchResults(data || [])
-        setIsSearching(false)
-      } else {
-        setSearchResults([])
+    if (!session?.user?.id) return
+
+    console.log('📡 [ChatList] Setting up realtime subscription')
+
+    const channel = supabase
+      .channel('chat-list-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload) => {
+          console.log('🔔 [Realtime] New message in system:', payload.new)
+          // 새 메시지가 있으면 채팅 목록 새로고침
+          loadChats()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chats'
+        },
+        (payload) => {
+          console.log('🔔 [Realtime] Chat updated:', payload.new)
+          // 채팅 업데이트 시 새로고침
+          loadChats()
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 [Realtime] ChatList subscription status:', status)
+      })
+
+    return () => {
+      console.log('📡 [ChatList] Cleaning up realtime subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [session?.user?.id])
+
+  // API로 채팅 목록 로드
+  const loadChats = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/chat/list')
+      
+      if (!response.ok) {
+        throw new Error('Failed to load chats')
       }
-    }, 300)
 
-    return () => clearTimeout(searchDebounce)
-  }, [searchQuery, userId, isInfluencerMode])
+      const data = await response.json()
+      setChats(data.chats || [])
+      
+      // 안읽은 개수 계산
+      const unread = (data.chats || []).reduce((sum: number, chat: any) => sum + (chat.unread_count || 0), 0)
+      setUnreadCount(unread)
+      
+    } catch (error) {
+      console.error('채팅 로드 오류:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  // 표시할 채팅 목록
+  // 표시할 채팅 목록 (검색 + 필터)
   const displayChats = useMemo(() => {
-    const source = searchQuery.trim() ? searchResults : chats
+    let filtered = chats
 
-    return source.filter((chat) => {
-      switch (activeFilter) {
-        case "unread":
-          // 안읽은 메시지가 있는 채팅
-          return chat.last_message && !chat.is_read
-        case "active":
-          return chat.is_active_collaboration
-        default:
-          return true
-      }
-    })
-  }, [chats, searchResults, searchQuery, activeFilter])
+    // 검색 필터
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter((chat) => {
+        const otherUserName = isInfluencerMode ? chat.advertiser_name : chat.influencer_name
+        return (
+          otherUserName?.toLowerCase().includes(query) ||
+          chat.campaign_title?.toLowerCase().includes(query) ||
+          chat.last_message?.toLowerCase().includes(query)
+        )
+      })
+    }
+
+    // 필터 적용
+    switch (activeFilter) {
+      case "unread":
+        return filtered.filter((chat) => chat.unread_count > 0)
+      case "active":
+        return filtered.filter((chat) => chat.is_active_collaboration)
+      default:
+        return filtered
+    }
+  }, [chats, searchQuery, activeFilter, isInfluencerMode])
 
   // 통계
   const activeCollaborationCount = chats.filter((chat) => chat.is_active_collaboration).length
@@ -94,28 +155,28 @@ export default function ChatPage() {
   const handleDeleteChat = async (chatId: number, e: React.MouseEvent) => {
     e.preventDefault()
     if (confirm("채팅을 삭제하시겠습니까?")) {
-      await deleteChat(chatId, userId, isInfluencerMode ? "influencer" : "advertiser")
-      refresh()
+      // TODO: 삭제 API 구현
+      alert("삭제 기능은 곧 구현됩니다")
     }
   }
 
   // 채팅 보관
   const handleArchiveChat = async (chatId: number, e: React.MouseEvent) => {
     e.preventDefault()
-    await archiveChat(chatId, userId, isInfluencerMode ? "influencer" : "advertiser")
-    refresh()
+    // TODO: 보관 API 구현
+    alert("보관 기능은 곧 구현됩니다")
   }
 
   // 모두 읽음 처리
   const handleMarkAllAsRead = async () => {
-    for (const chat of chats) {
-      await markMessagesAsRead(chat.id, userId)
-    }
-    refresh()
+    // TODO: 읽음 처리 API 구현
+    alert("읽음 처리 기능은 곧 구현됩니다")
   }
 
   // 시간 포맷팅
   const formatTime = (timestamp: string) => {
+    if (!timestamp) return ""
+    
     const date = new Date(timestamp)
     const now = new Date()
     const diff = now.getTime() - date.getTime()
@@ -129,6 +190,18 @@ export default function ChatPage() {
     if (days < 7) return `${days}일 전`
     
     return `${date.getMonth() + 1}월 ${date.getDate()}일`
+  }
+
+  // 로딩 중
+  if (status === "loading" || loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <TopHeader title="채팅" showNotifications={true} showHeart={false} />
+        <div className="flex items-center justify-center h-[60vh]">
+          <RefreshCw className="h-8 w-8 text-[#7b68ee] animate-spin" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -150,19 +223,15 @@ export default function ChatPage() {
                   className="pl-10 pr-10 h-10 rounded-full"
                   autoFocus
                 />
-                {isSearching ? (
-                  <RefreshCw className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin" />
-                ) : (
-                  <button
-                    onClick={() => {
-                      setShowSearch(false)
-                      setSearchQuery("")
-                    }}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    setShowSearch(false)
+                    setSearchQuery("")
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             ) : (
               <div className="flex items-center justify-between">
@@ -174,11 +243,6 @@ export default function ChatPage() {
                         ? "안읽은 메시지"
                         : "진행중인 협업"}
                   </h2>
-                  {!isOnline && (
-                    <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">
-                      오프라인
-                    </Badge>
-                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
@@ -203,7 +267,7 @@ export default function ChatPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={refresh}
+                    onClick={loadChats}
                     className="h-8 w-8 p-0"
                   >
                     <RefreshCw className="h-4 w-4" />
@@ -278,11 +342,7 @@ export default function ChatPage() {
 
           {/* 채팅 목록 */}
           <div className="pt-2">
-            {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <RefreshCw className="h-8 w-8 text-[#7b68ee] animate-spin" />
-              </div>
-            ) : displayChats.length > 0 ? (
+            {displayChats.length > 0 ? (
               <div>
                 {displayChats.map((chat, index) => {
                   const otherUserName = isInfluencerMode
@@ -292,8 +352,7 @@ export default function ChatPage() {
                     ? chat.advertiser_avatar
                     : chat.influencer_avatar
 
-                  // 간단한 읽음 처리 로직 (실제로는 DB에서)
-                  const hasUnread = chat.last_message && index < 2 // 임시
+                  const hasUnread = chat.unread_count > 0
 
                   return (
                     <div key={chat.id}>
@@ -303,7 +362,6 @@ export default function ChatPage() {
                       <Link
                         href={`/chat/${chat.id}`}
                         className="block hover:bg-gray-50 transition-colors"
-                        onClick={() => markMessagesAsRead(chat.id, userId)}
                       >
                         <div className="flex items-center gap-3 px-4 py-3">
                           {/* 아바타 */}
@@ -313,7 +371,7 @@ export default function ChatPage() {
                                 src={otherUserAvatar || undefined}
                                 alt={otherUserName}
                               />
-                              <AvatarFallback>{otherUserName[0]}</AvatarFallback>
+                              <AvatarFallback>{otherUserName?.[0] || '?'}</AvatarFallback>
                             </Avatar>
                             {chat.is_active_collaboration && (
                               <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
@@ -337,7 +395,7 @@ export default function ChatPage() {
                                 )}
                               </div>
                               <span className="text-xs text-[#999] flex-shrink-0">
-                                {formatTime(chat.last_message_at)}
+                                {formatTime(chat.updated_at)}
                               </span>
                             </div>
                             <div className="flex items-center">
@@ -372,8 +430,7 @@ export default function ChatPage() {
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.preventDefault()
-                                  markMessagesAsRead(chat.id, userId)
-                                  refresh()
+                                  handleMarkAllAsRead()
                                 }}
                               >
                                 <CheckCheck className="w-4 h-4 mr-2" />

@@ -24,23 +24,11 @@ export default function LandingPage() {
     }
   }, [status, session, router])
 
-  useEffect(() => {
-    if (activeTab === "influencer") {
-      setShowInfluencerOnboarding(true)
-    }
-  }, [])
+  // ✅ 자동 온보딩 모달 제거 - 이 useEffect를 삭제했습니다
 
   const handleTabChange = (tab: "influencer" | "advertiser") => {
     console.log("[v0] Tab change requested:", tab)
-    if (tab === "advertiser") {
-      console.log("[v0] Showing advertiser onboarding modal")
-      setActiveTab("advertiser")
-      setShowAdvertiserOnboarding(true)
-    } else {
-      console.log("[v0] Showing influencer onboarding modal")
-      setActiveTab(tab)
-      setShowInfluencerOnboarding(true)
-    }
+    setActiveTab(tab)
   }
 
   const handleAdvertiserOnboardingClose = () => {

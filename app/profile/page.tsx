@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { TopHeader } from "@/components/top-header"
@@ -189,8 +189,8 @@ export default function ProfilePage() {
     return Math.round(completion)
   }
 
-  // ✅ 추가: DB에서 지원 내역 로드
-  const fetchMyApplications = async () => {
+  // ✅ useCallback으로 감싸기
+  const fetchMyApplications = useCallback(async () => {
     if (!session?.user?.id) return
 
     try {
@@ -212,10 +212,10 @@ export default function ProfilePage() {
     } finally {
       setLoadingApplications(false)
     }
-  }
+  }, [session?.user?.id])
 
-  // ✅ DB에서 캠페인 목록 로드
-  const fetchUserCampaigns = async () => {
+  // ✅ useCallback으로 감싸기
+  const fetchUserCampaigns = useCallback(async () => {
     if (!session?.user?.id) return
 
     try {
@@ -237,7 +237,7 @@ export default function ProfilePage() {
     } finally {
       setLoadingCampaigns(false)
     }
-  }
+  }, [session?.user?.id])
 
   useEffect(() => {
     const influencerMode = localStorage.getItem("influencer_mode") === "true"
@@ -272,64 +272,60 @@ export default function ProfilePage() {
     }
   }, [])
 
-  // ✅ 인플루언서 모드일 때 지원 내역 로드
+  // ✅ 의존성 배열 수정
   useEffect(() => {
     if (isInfluencerMode && session?.user?.id) {
       fetchMyApplications()
     }
-  }, [session, isInfluencerMode])
+  }, [isInfluencerMode, session?.user?.id, fetchMyApplications])
 
-  // ✅ 광고주 모드일 때 캠페인 로드
+  // ✅ 의존성 배열 수정
   useEffect(() => {
     if (!isInfluencerMode && session?.user?.id) {
       fetchUserCampaigns()
     }
-  }, [session, isInfluencerMode])
+  }, [isInfluencerMode, session?.user?.id, fetchUserCampaigns])
 
+  // ✅ useCallback으로 감싸고 불필요한 새로고침 제거
+  const handleVisibilityChange = useCallback(() => {
+    if (document.hidden) return
+
+    if (!isInfluencerMode) {
+      const completion = getAdvertiserProfileCompletion()
+      const isComplete = checkAdvertiserProfileComplete()
+      setProfileCompletion(completion)
+      setIsProfileComplete(isComplete)
+    } else {
+      const influencerCompletion = calculateInfluencerProfileCompletion()
+      setInfluencerProfileCompletion(influencerCompletion)
+      setIsInfluencerProfileComplete(influencerCompletion === 100)
+    }
+  }, [isInfluencerMode])
+
+  // ✅ useCallback으로 감싸고 불필요한 새로고침 제거
+  const handleFocus = useCallback(() => {
+    if (!isInfluencerMode) {
+      const completion = getAdvertiserProfileCompletion()
+      const isComplete = checkAdvertiserProfileComplete()
+      setProfileCompletion(completion)
+      setIsProfileComplete(isComplete)
+    } else {
+      const influencerCompletion = calculateInfluencerProfileCompletion()
+      setInfluencerProfileCompletion(influencerCompletion)
+      setIsInfluencerProfileComplete(influencerCompletion === 100)
+    }
+  }, [isInfluencerMode])
+
+  // ✅ 의존성 배열 수정
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        if (!isInfluencerMode) {
-          const completion = getAdvertiserProfileCompletion()
-          const isComplete = checkAdvertiserProfileComplete()
-          setProfileCompletion(completion)
-          setIsProfileComplete(isComplete)
-        } else {
-          const influencerCompletion = calculateInfluencerProfileCompletion()
-          setInfluencerProfileCompletion(influencerCompletion)
-          setIsInfluencerProfileComplete(influencerCompletion === 100)
-        }
-      }
-    }
-
-    const handleFocus = () => {
-      if (!isInfluencerMode) {
-        const completion = getAdvertiserProfileCompletion()
-        const isComplete = checkAdvertiserProfileComplete()
-        setProfileCompletion(completion)
-        setIsProfileComplete(isComplete)
-        // 포커스 시 캠페인 목록도 새로고침
-        if (session?.user?.id) {
-          fetchUserCampaigns()
-        }
-      } else {
-        const influencerCompletion = calculateInfluencerProfileCompletion()
-        setInfluencerProfileCompletion(influencerCompletion)
-        setIsInfluencerProfileComplete(influencerCompletion === 100)
-        // ✅ 추가: 포커스 시 지원 내역도 새로고침
-        if (session?.user?.id) {
-          fetchMyApplications()
-        }
-      }
-    }
-
     document.addEventListener("visibilitychange", handleVisibilityChange)
     window.addEventListener("focus", handleFocus)
+    
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener("focus", handleFocus)
     }
-  }, [isInfluencerMode, session])
+  }, [handleVisibilityChange, handleFocus])
 
   useEffect(() => {
     if (isInfluencerMode) {

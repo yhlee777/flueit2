@@ -116,15 +116,61 @@ export default function CampaignsPage() {
     }
   }, [session, status])
 
-  // ✅ 즐겨찾기 로드
-  useEffect(() => {
-    if (isInfluencerMode) {
+  // ✅ DB에서 찜 목록 가져오는 함수
+  const fetchFavoriteCampaigns = async () => {
+    try {
+      console.log('🔍 DB에서 찜한 캠페인 목록 로드 중...')
+      
+      const response = await fetch('/api/favorites/campaigns')
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setFavoriteCampaignIds(data.campaignIds || [])
+        console.log('✅ DB에서 찜 목록 로드 성공:', data.campaignIds)
+        
+        // localStorage와 동기화
+        localStorage.setItem('campaign-favorites', JSON.stringify(data.campaignIds || []))
+      } else {
+        console.error('❌ 찜 목록 로드 실패:', data.error)
+        
+        // 실패 시 localStorage에서 로드
+        const savedFavorites = localStorage.getItem("campaign-favorites")
+        if (savedFavorites) {
+          setFavoriteCampaignIds(JSON.parse(savedFavorites))
+        }
+      }
+    } catch (error) {
+      console.error('❌ 찜 목록 로드 오류:', error)
+      
+      // 에러 시 localStorage에서 로드
       const savedFavorites = localStorage.getItem("campaign-favorites")
       if (savedFavorites) {
         setFavoriteCampaignIds(JSON.parse(savedFavorites))
       }
     }
-  }, [isInfluencerMode])
+  }
+
+  // ✅ 즐겨찾기 로드 - DB에서
+  useEffect(() => {
+    if (isInfluencerMode && session?.user?.id) {
+      fetchFavoriteCampaigns()
+    }
+  }, [isInfluencerMode, session])
+
+  // ✅ 페이지 포커스 시 찜 목록 다시 로드
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isInfluencerMode && session?.user?.id) {
+        fetchFavoriteCampaigns()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [isInfluencerMode, session])
 
   // ✅ 배너 설정
   useEffect(() => {
@@ -218,14 +264,70 @@ export default function CampaignsPage() {
     setSelectedVisitType("")
   }
 
-  const toggleFavorite = (campaignId: string) => { // string 타입
-  const newFavorites = favoriteCampaignIds.includes(campaignId)
-    ? favoriteCampaignIds.filter((id) => id !== campaignId)
-    : [...favoriteCampaignIds, campaignId]
-  
-  setFavoriteCampaignIds(newFavorites)
-  localStorage.setItem("campaign-favorites", JSON.stringify(newFavorites))
-}
+  // ✅ DB 연동된 toggleFavorite
+  const toggleFavorite = async (campaignId: string) => {
+    if (!session?.user?.id) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const isFavorited = favoriteCampaignIds.includes(campaignId)
+    
+    // 낙관적 업데이트 (UI 먼저 변경)
+    const newFavorites = isFavorited
+      ? favoriteCampaignIds.filter((id) => id !== campaignId)
+      : [...favoriteCampaignIds, campaignId]
+    
+    setFavoriteCampaignIds(newFavorites)
+    localStorage.setItem('campaign-favorites', JSON.stringify(newFavorites))
+    
+    try {
+      if (isFavorited) {
+        // 찜 해제
+        console.log('💔 찜 해제 API 호출:', campaignId)
+        const response = await fetch(`/api/favorites/campaigns?campaignId=${campaignId}`, {
+          method: 'DELETE',
+        })
+        
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.error || '찜 해제에 실패했습니다.')
+        }
+        
+        console.log('✅ 찜 해제 성공')
+      } else {
+        // 찜 추가
+        console.log('💗 찜 추가 API 호출:', campaignId)
+        const response = await fetch('/api/favorites/campaigns', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ campaignId }),
+        })
+        
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.error || '찜 추가에 실패했습니다.')
+        }
+        
+        console.log('✅ 찜 추가 성공')
+      }
+    } catch (error) {
+      console.error('❌ 찜 토글 오류:', error)
+      
+      // 에러 발생 시 원래 상태로 롤백
+      setFavoriteCampaignIds(isFavorited 
+        ? [...favoriteCampaignIds, campaignId]
+        : favoriteCampaignIds.filter((id) => id !== campaignId)
+      )
+      localStorage.setItem('campaign-favorites', JSON.stringify(favoriteCampaignIds))
+      
+      alert(error instanceof Error ? error.message : '찜 처리 중 오류가 발생했습니다.')
+    }
+  }
 
   const getVisitTypeBadge = (campaign: any) => {
     if (campaign.visit_type === "visit") {

@@ -552,71 +552,89 @@ const handleClearPlace = () => {
   setIsPlaceSelected(false)
 }
   const calculateInfluencerProgress = () => {
-    let filledFields = 0
-    const totalFields = 8 // Total important fields for influencer
+  let progress = 0
 
-    // Profile photo
-    if (photoPreview) filledFields += 1
-
-    // Category
-    if (category && category.trim() !== "") filledFields += 1
-
-    // Instagram ID (verified)
-    if (instagramId && instagramId.trim() !== "" && isInstagramVerified) filledFields += 1
-
-    // Instagram URL
-    // Removed check for instagramUrl
-
-    // Bio
-    if (bio && bio.trim() !== "") filledFields += 1
-
-    // Activity rate
-    if (activityRate && activityRate.trim() !== "") filledFields += 1
-
-    if (broadRegion && broadRegion.trim() !== "") {
-      if (broadRegion === "전체") {
-        // If broad region is "전체", count as complete without narrow region
-        filledFields += 1
-      } else if (narrowRegion && narrowRegion.trim() !== "") {
-        // Otherwise, require both broad and narrow region
-        filledFields += 1
-      }
-    }
-
-    // Hashtags
-    if (profileHashtags.length > 0) filledFields += 1
-
-    return Math.round((filledFields / totalFields) * 100)
+  // 헬퍼 함수: 문자열이 비어있지 않은지 체크
+  const hasValue = (value: any): boolean => {
+    return value != null && String(value).trim() !== ""
   }
 
+  // 1. 프로필 사진 (15점)
+  if (photoPreview) progress += 15
+
+  // 2. 카테고리 (15점)
+  if (hasValue(category)) progress += 15
+
+  // 3. 자기소개 (15점)
+  if (hasValue(bio)) progress += 15
+
+  // 4. 인스타그램 ID (15점 + 인증 시 5점)
+  if (hasValue(instagramId)) {
+    progress += 15
+    if (isInstagramVerified) progress += 5
+  }
+
+  // 5. 지역 (15점)
+  if (hasValue(broadRegion)) {
+    if (String(broadRegion) === "전체") {
+      progress += 15
+    } else if (hasValue(narrowRegion)) {
+      progress += 15
+    }
+  }
+
+  // 6. 활동 빈도 (5점)
+  if (hasValue(activityRate)) progress += 5
+
+  // 7. 해시태그 (5점)
+  if (profileHashtags && Array.isArray(profileHashtags) && profileHashtags.length > 0) {
+    progress += 5
+  }
+
+  return Math.min(100, progress)
+}
   const calculateAdvertiserProgress = () => {
-    let filledFields = 0
-    let totalFields = 0
+  let filledFields = 0
+  let totalFields = 0
 
-    const businessNumberComplete = businessNum1.length === 3 && businessNum2.length === 2 && businessNum3.length === 5
+  const businessNumberComplete = businessNum1.length === 3 && businessNum2.length === 2 && businessNum3.length === 5
 
-    // Required fields: brandCategory, storeType, brandName, brandLink
-    const requiredFields = [brandCategory, storeType, brandName, brandLink]
+  // ✅ 항상 필수: brandCategory, storeType, brandLink, businessNumber (총 4개)
+  
+  // 1. Brand category
+  totalFields++
+  if (brandCategory && brandCategory.trim() !== "") filledFields++
 
-    totalFields += requiredFields.length + 1 // +1 for business number
-    filledFields += requiredFields.filter((field) => field && field.trim() !== "").length
-    if (businessNumberComplete) filledFields += 1
+  // 2. Store type
+  totalFields++
+  if (storeType && storeType.trim() !== "") filledFields++
 
-    // Conditional required field: offlineLocation (only if offline or both)
-    if (storeType === "offline" || storeType === "both") {
-      totalFields += 1
-      if (offlineLocation && offlineLocation.trim() !== "") filledFields += 1
-    }
+  // 3. Brand link
+  totalFields++
+  if (brandLink && brandLink.trim() !== "") filledFields++
 
-    // Conditional required field: broadRegion and narrowRegion (if storeType is not online)
-    if (storeType === "offline" || storeType === "both") {
-      totalFields += 2
-      if (broadRegion && broadRegion.trim() !== "") filledFields += 1
-      if (narrowRegion && narrowRegion.trim() !== "") filledFields += 1
-    }
+  // 4. Business number
+  totalFields++
+  if (businessNumberComplete) filledFields++
 
-    return Math.round((filledFields / totalFields) * 100)
+  // ✅ 판매 형태별 조건부 필수
+  if (storeType === "online") {
+    // 온라인: brandName만 필수
+    totalFields++
+    if (brandName && brandName.trim() !== "") filledFields++
+  } else if (storeType === "offline") {
+    // 오프라인: offlineLocation만 필수
+    totalFields++
+    if (offlineLocation && offlineLocation.trim() !== "") filledFields++
+  } else if (storeType === "both") {
+    // 둘다: brandName + offlineLocation 둘다 필수
+    totalFields += 2
+    if (brandName && brandName.trim() !== "") filledFields++
+    if (offlineLocation && offlineLocation.trim() !== "") filledFields++
   }
+
+  return Math.round((filledFields / totalFields) * 100)
+}
 
   const handleSelectCategory = (selectedCategory: string) => {
     setCategory(category === selectedCategory ? "" : selectedCategory)
@@ -1327,44 +1345,7 @@ const handleInstagramVerify = async () => {
             </button>
           </div>
 
-          {(storeType === "offline" || storeType === "both") && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">
-                활동 지역 <span className="text-gray-400 text-xs font-normal">(필수)</span>
-              </Label>
-              <div className="flex gap-2">
-                <select
-                  value={broadRegion}
-                  onChange={(e) => handleBroadRegionChange(e.target.value)}
-                  className="flex-1 h-12 rounded-xl border-gray-300 focus:border-[#7b68ee] focus:ring-[#7b68ee] px-3"
-                >
-                  <option value="">시/도 선택</option>
-                  <option value="전체">전체</option>
-                  {Object.keys(REGIONS).map((region) => (
-                    <option key={region} value={region}>
-                      {region}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={narrowRegion}
-                  onChange={(e) => setNarrowRegion(e.target.value)}
-                  className="flex-1 h-12 rounded-xl border-gray-300 focus:border-[#7b68ee] focus:ring-[#7b68ee] px-3"
-                  disabled={!broadRegion || broadRegion === "전체"}
-                >
-                  <option value="">구/군 선택</option>
-                  <option value="전체">전체</option>
-                  {broadRegion &&
-                    broadRegion !== "전체" &&
-                    REGIONS[broadRegion]?.map((region) => (
-                      <option key={region} value={region}>
-                        {region}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            </div>
-          )}
+          
         </main>
 
         {/* Image Position Adjustment Dialog */}

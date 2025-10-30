@@ -1,176 +1,218 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ChevronLeft, MapPin, Calendar, Users, Eye, Heart, MessageCircle } from "lucide-react"
-import Image from "next/image"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ChevronLeft, Eye, Users, Calendar, Heart, Send, X } from "lucide-react"
 
-interface Campaign {
-  id: string
-  user_id: string
-  title: string
-  category: string
-  status: string
-  recruit_type: string
-  recruit_count: number
-  applicants: number
-  confirmed_applicants: number
-  visit_type: string
-  reward_type: string
-  payment_amount: string | null
-  product_name: string | null
-  other_reward: string | null
-  additional_reward_info: string | null
-  is_deal_possible: boolean
-  negotiation_option: string | null
-  content_type: string | null
-  video_duration: string | null
-  required_content: string | null
-  required_scenes: string | null
-  hashtags: string[]
-  link_url: string | null
-  additional_memo: string | null
-  uploaded_photos: string[]
-  thumbnail: string | null
-  views: number
-  likes: number
-  comments: number
-  created_at: string
-  updated_at: string
-}
-
-export default function CampaignDetailPage() {
+export default function CampaignDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const params = useParams()
   const { data: session } = useSession()
-  const campaignId = params.id as string
-
-  const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const campaignId = params.id
+  
+  const [campaign, setCampaign] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [isApplying, setIsApplying] = useState(false)
-  const [showApplyModal, setShowApplyModal] = useState(false)
-  const [applicationMessage, setApplicationMessage] = useState("")
-  const [hasApplied, setHasApplied] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
+  const [isInfluencerMode, setIsInfluencerMode] = useState(false)
+  const [isFavorite, setIsFavorite] = useState(false)
+  
+  // 제안서 모달
+  const [proposalOpen, setProposalOpen] = useState(false)
+  const [proposalMessage, setProposalMessage] = useState("")
+  const [sending, setSending] = useState(false)
 
-  // 캠페인 데이터 로드
   useEffect(() => {
-    if (!campaignId) return
+    // 인플루언서 모드 확인
+    const influencerMode = localStorage.getItem("influencer_mode") === "true"
+    setIsInfluencerMode(influencerMode)
 
-    const fetchCampaign = async () => {
-      try {
-        setLoading(true)
-        console.log("🔍 캠페인 조회 시작:", campaignId)
+    loadCampaign()
+    loadFavoriteStatus()
+  }, [campaignId])
 
-        const response = await fetch(`/api/campaigns/${campaignId}`)
-        const data = await response.json()
+  const loadCampaign = async () => {
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`)
+      const data = await response.json()
 
-        if (!response.ok) {
-          console.error("❌ API 오류:", data)
-          alert(data.error || "캠페인을 불러오는데 실패했습니다.")
-          router.push("/campaigns")
-          return
-        }
-
-        console.log("✅ 캠페인 데이터:", data.campaign)
-        setCampaign(data.campaign)
-
-        // 본인 캠페인 여부 확인
-        if (session?.user?.id) {
-          setIsOwner(data.campaign.user_id === session.user.id)
-        }
-
-        // 이미 지원했는지 확인
-        if (data.applications && session?.user?.id) {
-          const userApplication = data.applications.find(
-            (app: any) => app.influencer_id === session.user.id
-          )
-          setHasApplied(!!userApplication)
-        }
-      } catch (error) {
-        console.error("❌ 캠페인 조회 오류:", error)
-        alert("캠페인을 불러오는데 실패했습니다.")
-        router.push("/campaigns")
-      } finally {
-        setLoading(false)
+      if (!response.ok) {
+        console.error("❌ 캠페인 조회 오류:", data)
+        return
       }
+
+      setCampaign(data.campaign)
+
+      // 캠페인 소유자 확인
+      if (session?.user?.id && data.campaign?.user_id === session.user.id) {
+        setIsOwner(true)
+      }
+    } catch (error) {
+      console.error("❌ 캠페인 로드 오류:", error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    fetchCampaign()
-  }, [campaignId, session, router])
+  // ✅ 찜 상태 로드
+  const loadFavoriteStatus = () => {
+    try {
+      const favorites = localStorage.getItem("favorite_campaigns")
+      if (favorites) {
+        const favList = JSON.parse(favorites)
+        setIsFavorite(favList.includes(campaignId))
+        console.log('💖 찜 상태:', favList.includes(campaignId))
+      }
+    } catch (error) {
+      console.error('찜 상태 로드 오류:', error)
+    }
+  }
 
-  // 지원하기
-  const handleApply = async () => {
-    if (!session) {
+  // ✅ 찜하기 토글 (수정)
+  const toggleFavorite = () => {
+    try {
+      const favorites = localStorage.getItem("favorite_campaigns")
+      let favList = favorites ? JSON.parse(favorites) : []
+      
+      if (isFavorite) {
+        // 찜하기 취소
+        favList = favList.filter((id: string) => id !== campaignId)
+        setIsFavorite(false)
+        console.log('💔 찜 취소')
+      } else {
+        // 찜하기 추가
+        if (!favList.includes(campaignId)) {
+          favList.push(campaignId)
+        }
+        setIsFavorite(true)
+        console.log('💖 찜 추가')
+      }
+      
+      localStorage.setItem("favorite_campaigns", JSON.stringify(favList))
+    } catch (error) {
+      console.error('찜 토글 오류:', error)
+      alert('찜하기 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // ✅ 제안서 모달 열기
+  const openProposalModal = () => {
+    if (!session?.user) {
       alert("로그인이 필요합니다.")
       router.push("/login")
       return
     }
 
-    if (isOwner) {
-      alert("본인의 캠페인에는 지원할 수 없습니다.")
-      return
-    }
-
-    if (hasApplied) {
-      alert("이미 지원한 캠페인입니다.")
-      return
-    }
-
-    setShowApplyModal(true)
+    // 기본 메시지 설정
+    setProposalMessage(`안녕하세요!\n\n"${campaign.title}" 캠페인에 협업 제안 드립니다.\n\n저의 콘텐츠와 잘 맞을 것 같아 지원하게 되었습니다.\n함께 멋진 콘텐츠를 만들고 싶습니다!\n\n감사합니다.`)
+    setProposalOpen(true)
   }
 
-  // 지원 제출
-  const handleSubmitApplication = async () => {
-    try {
-      setIsApplying(true)
-      console.log("🔍 캠페인 지원 시작:", campaignId)
+  // ✅ 제안서 전송
+  const handleSendProposal = async () => {
+    if (!proposalMessage.trim()) {
+      alert("제안 내용을 입력해주세요!")
+      return
+    }
 
-      const response = await fetch(`/api/campaigns/${campaignId}/applications`, {
-        method: "POST",
+    // 프로필 완성도 체크
+    try {
+      const profileResponse = await fetch('/api/user/profile')
+      const profileData = await profileResponse.json()
+
+      if (!profileResponse.ok || !profileData.profile) {
+        alert("프로필을 먼저 완성해주세요!")
+        setProposalOpen(false)
+        router.push("/profile/setup")
+        return
+      }
+
+      const profile = profileData.profile
+
+      // 완성도 계산
+      let progress = 0
+      if (profile.image) progress += 15
+      if (profile.bio) progress += 15
+      if (profile.category || profile.categories?.length > 0) progress += 15
+      if (profile.instagram_handle) progress += 15
+      if (profile.main_platform) progress += 15
+      if (profile.follower_count) progress += 10
+      if (profile.name) progress += 5
+      if (profile.interests?.length > 0) progress += 5
+      if (profile.content_samples?.length > 0) progress += 5
+
+      console.log('📊 프로필 완성도:', progress + '%')
+
+      if (progress < 60) {
+        alert(`프로필을 더 완성해주세요! (현재 ${progress}%, 최소 60% 필요)`)
+        setProposalOpen(false)
+        router.push("/profile/setup")
+        return
+      }
+    } catch (error) {
+      console.error('프로필 확인 오류:', error)
+      console.warn('프로필 체크 실패, 제안서 전송 계속 진행')
+    }
+
+    setSending(true)
+
+    try {
+      console.log('📤 제안서 전송 시도')
+
+      const response = await fetch('/api/chat/proposal', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: applicationMessage,
-        }),
+          advertiserId: campaign.user_id,
+          campaignId: campaignId,
+          proposalMessage: proposalMessage.trim(),
+        })
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        console.error("❌ 지원 실패:", data)
-        alert(data.error || "지원에 실패했습니다.")
+        if (data.chatId) {
+          if (confirm('이미 제안서를 보냈습니다. 채팅방으로 이동하시겠습니까?')) {
+            router.push(`/chat/${data.chatId}`)
+          }
+        } else {
+          alert(data.error || '제안서 전송 실패')
+        }
         return
       }
 
-      console.log("✅ 지원 성공:", data)
-      alert("캠페인에 성공적으로 지원되었습니다!")
-      setShowApplyModal(false)
-      setApplicationMessage("")
-      setHasApplied(true)
+      console.log('✅ 제안서 전송 완료')
 
-      // 캠페인 데이터 다시 로드
-      window.location.reload()
+      setProposalOpen(false)
+      alert('✅ 제안서가 전송되었습니다! 광고주의 수락을 기다려주세요.')
+      router.push(`/chat/${data.chatId}`)
+      
     } catch (error) {
-      console.error("❌ 지원 오류:", error)
-      alert("지원 중 오류가 발생했습니다.")
+      console.error('❌ 제안서 전송 오류:', error)
+      alert('제안서 전송 중 오류가 발생했습니다.')
     } finally {
-      setIsApplying(false)
+      setSending(false)
     }
   }
 
-  // 수정하기
+  // 캠페인 수정
   const handleEdit = () => {
     router.push(`/campaigns/${campaignId}/edit`)
   }
 
-  // 삭제하기
+  // 캠페인 삭제
   const handleDelete = async () => {
-    if (!confirm("정말 이 캠페인을 삭제하시겠습니까?")) {
+    if (!confirm("정말 삭제하시겠습니까?")) {
       return
     }
 
@@ -261,40 +303,32 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* Main Content */}
-      <div className="pb-24">
+      <div className="pb-40">
         {/* 이미지 갤러리 */}
         {campaign.uploaded_photos && campaign.uploaded_photos.length > 0 ? (
-          <div className="relative aspect-video bg-gray-100">
-            <Image
-              src={campaign.uploaded_photos[0] || "/placeholder.svg"}
+          <div className="relative h-64 bg-gray-100">
+            <img
+              src={campaign.uploaded_photos[0]}
               alt={campaign.title}
-              fill
-              className="object-cover"
+              className="w-full h-full object-cover"
             />
           </div>
         ) : (
-          <div className="relative aspect-video bg-gray-100 flex items-center justify-center">
-            <div className="text-center text-gray-400">
-              <svg className="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21,15 16,10 5,21" />
-              </svg>
-              <p className="text-sm">이미지 없음</p>
-            </div>
+          <div className="h-64 bg-gray-100 flex items-center justify-center">
+            <p className="text-gray-400">이미지 없음</p>
           </div>
         )}
 
         {/* 상태 배지 */}
-        <div className="px-4 py-3 border-b border-gray-100">
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-3">
+          <div className="flex flex-wrap gap-2">
             <span
               className={`px-3 py-1 rounded-full text-xs font-medium ${
                 campaign.status === "구인 진행 중"
-                  ? "bg-green-100 text-green-700"
+                  ? "bg-[#7b68ee] text-white"
                   : campaign.status === "구인 마감"
-                  ? "bg-gray-100 text-gray-700"
-                  : "bg-red-100 text-red-700"
+                    ? "bg-gray-100 text-gray-700"
+                    : "bg-red-100 text-red-700"
               }`}
             >
               {campaign.status}
@@ -393,26 +427,18 @@ export default function CampaignDetailPage() {
           {/* 필수 촬영 장면 */}
           {campaign.required_scenes && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">📸 필수 촬영 장면</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">🎬 필수 촬영 장면</h3>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.required_scenes}</p>
-            </div>
-          )}
-
-          {/* 추가 메모 */}
-          {campaign.additional_memo && (
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">💬 추가 메모</h3>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.additional_memo}</p>
             </div>
           )}
 
           {/* 해시태그 */}
           {campaign.hashtags && campaign.hashtags.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">#️⃣ 해시태그</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">#️⃣ 필수 해시태그</h3>
               <div className="flex flex-wrap gap-2">
-                {campaign.hashtags.map((tag, index) => (
-                  <span key={index} className="px-3 py-1 bg-[#7b68ee]/10 text-[#7b68ee] rounded-full text-sm">
+                {campaign.hashtags.map((tag: string, index: number) => (
+                  <span key={index} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm">
                     {tag}
                   </span>
                 ))}
@@ -420,86 +446,149 @@ export default function CampaignDetailPage() {
             </div>
           )}
 
-          {/* 링크 */}
+          {/* 링크 URL */}
           {campaign.link_url && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">🔗 관련 링크</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">🔗 링크</h3>
               <a
                 href={campaign.link_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline break-all"
+                className="text-sm text-[#7b68ee] hover:underline break-all"
               >
                 {campaign.link_url}
               </a>
             </div>
           )}
+
+          {/* 추가 메모 */}
+          {campaign.additional_memo && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">💬 추가 안내사항</h3>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{campaign.additional_memo}</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Bottom Action Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-50">
-        {isOwner ? (
-          <div className="flex gap-3">
+      {/* ✅ 인플루언서용 하단 고정 버튼 */}
+      {isInfluencerMode && !isOwner && (
+        <div className="fixed left-0 right-0 bg-white border-t border-gray-200 p-4 z-40" style={{ bottom: '60px' }}>
+          <div className="flex gap-3 max-w-md mx-auto">
+            {/* 찜하기 버튼 */}
             <Button
-              onClick={handleManageApplicants}
-              className="flex-1 h-12 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-medium"
+              variant="outline"
+              size="lg"
+              className={`flex-shrink-0 w-14 h-14 rounded-xl border-2 ${
+                isFavorite
+                  ? "border-red-500 bg-red-50 hover:bg-red-100"
+                  : "border-gray-300 hover:border-red-500 hover:bg-red-50"
+              }`}
+              onClick={toggleFavorite}
             >
-              신청자 관리 ({campaign.applicants || 0}명)
+              <Heart
+                className={`w-6 h-6 ${isFavorite ? "fill-red-500 text-red-500" : "text-gray-600"}`}
+              />
             </Button>
-            <Button onClick={handleEdit} variant="outline" className="h-12 px-6">
-              수정
+
+            {/* 제안서 보내기 버튼 */}
+            <Button
+              size="lg"
+              className="flex-1 h-14 rounded-xl bg-[#7b68ee] hover:bg-[#6a5acd] text-white font-semibold text-base shadow-lg"
+              onClick={openProposalModal}
+            >
+              <Send className="w-5 h-5 mr-2" />
+              협업 제안하기
             </Button>
           </div>
-        ) : (
-          <Button
-            onClick={handleApply}
-            disabled={hasApplied || campaign.status !== "구인 진행 중"}
-            className="w-full h-12 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {hasApplied ? "이미 지원한 캠페인입니다" : campaign.status === "구인 진행 중" ? "지원하기" : "모집이 마감되었습니다"}
-          </Button>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* 지원하기 모달 */}
-      {showApplyModal && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">캠페인 지원하기</h3>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">지원 메시지 (선택)</label>
-              <Textarea
-                placeholder="자신을 소개하거나 지원 동기를 작성해주세요."
-                value={applicationMessage}
-                onChange={(e) => setApplicationMessage(e.target.value)}
-                rows={5}
-                className="w-full"
-              />
+      {/* ✅ 광고주용 하단 고정 버튼 */}
+      {isOwner && (
+        <div className="fixed left-0 right-0 bg-white border-t border-gray-200 p-4 z-40" style={{ bottom: '60px' }}>
+          <div className="flex gap-3 max-w-md mx-auto">
+            <Button
+              size="lg"
+              className="flex-1 h-14 rounded-xl bg-[#7b68ee] hover:bg-[#6a5acd] text-white font-semibold"
+              onClick={handleManageApplicants}
+            >
+              <Users className="w-5 h-5 mr-2" />
+              지원자 관리 ({campaign.applicants || 0}명)
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ 제안서 작성 모달 */}
+      <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-lg font-bold">협업 제안서 작성</DialogTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setProposalOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="flex gap-3">
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* 캠페인 미리보기 */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">캠페인</p>
+              <p className="text-sm font-semibold text-gray-900">{campaign.title}</p>
+            </div>
+
+            {/* 제안서 입력 */}
+            <div>
+              <label className="text-sm font-medium text-gray-900 mb-2 block">
+                제안 메시지
+              </label>
+              <Textarea
+                value={proposalMessage}
+                onChange={(e) => setProposalMessage(e.target.value)}
+                placeholder="광고주에게 보낼 제안 내용을 작성하세요..."
+                rows={8}
+                className="resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                💡 자기소개와 함께 왜 이 캠페인에 적합한지 어필해보세요!
+              </p>
+            </div>
+
+            {/* 전송 버튼 */}
+            <div className="flex gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowApplyModal(false)
-                  setApplicationMessage("")
-                }}
+                onClick={() => setProposalOpen(false)}
                 className="flex-1"
-                disabled={isApplying}
+                disabled={sending}
               >
                 취소
               </Button>
               <Button
-                onClick={handleSubmitApplication}
-                disabled={isApplying}
-                className="flex-1 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white"
+                onClick={handleSendProposal}
+                disabled={!proposalMessage.trim() || sending}
+                className="flex-1 bg-[#7b68ee] hover:bg-[#6a5acd] text-white"
               >
-                {isApplying ? "지원 중..." : "지원하기"}
+                {sending ? (
+                  <>전송 중...</>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    제안서 보내기
+                  </>
+                )}
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

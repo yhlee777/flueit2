@@ -4,7 +4,6 @@ import { Suspense } from "react"
 import { CampaignProvider } from "@/lib/campaign-store"
 import { ConditionalBottomNavigation } from "@/components/conditional-bottom-navigation"
 import { Providers } from "./providers"
-import { ApprovalChecker } from "@/components/approval-checker"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -37,7 +36,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <Providers>
-          <ApprovalChecker />  {/* ✅ 여기 추가 */}
+          {/* ✅ ApprovalChecker 제거됨 - 자동 승인으로 변경 */}
           <CampaignProvider>
             <Suspense fallback={null}>{children}</Suspense>
             <ConditionalBottomNavigation />

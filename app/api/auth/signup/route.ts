@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     // 비밀번호 해싱
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // 사용자 생성
+    // 사용자 생성 (자동 승인)
     const { data: user, error } = await supabaseAdmin
       .from('users')
       .insert({
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         password: hashedPassword,
         user_type: userType.toUpperCase() || null,
         provider: null,
+        approval_status: 'approved', // ✅ 자동 승인
       })
       .select('id, email, username, user_type, created_at')
       .single()
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ 회원가입 성공:', user)
+    console.log('✅ 회원가입 성공 (자동 승인):', user)
 
     return NextResponse.json(
       { 
