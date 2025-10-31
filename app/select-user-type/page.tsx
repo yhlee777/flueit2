@@ -32,8 +32,8 @@ export default function SelectUserTypePage() {
         // localStorage에도 저장 (기존 코드와의 호환성)
         localStorage.setItem('influencer_mode', selectedType === 'INFLUENCER' ? 'true' : 'false')
         
-        // 캠페인 페이지로 리다이렉트
-        router.push('/campaigns')
+        // ✅ 가입 완료 페이지로 리다이렉트
+        router.push('/signup-complete')
       } else {
         alert(data.error || '회원 유형 저장에 실패했습니다.')
         setIsLoading(false)

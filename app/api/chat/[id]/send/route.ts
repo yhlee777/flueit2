@@ -22,7 +22,7 @@ export async function POST(
     const userId = session.user.id
     const body = await request.json()
 
-    console.log('🔍 [API] Send message:', { chatId, userId, content: body.content?.substring(0, 20) })
+    console.log('🔍 [API] Send message:', { chatId, userId, content: body.content?.substring(0, 20), metadata: body.metadata })
 
     // 채팅방 참여자 확인
     const { data: chat, error: chatError } = await supabaseAdmin
@@ -45,7 +45,7 @@ export async function POST(
     // sender_type 결정
     const senderType = chat.influencer_id === userId ? 'influencer' : 'advertiser'
 
-    // 메시지 생성
+    // ✅ 메시지 생성 (metadata 필드 추가)
     const { data: message, error: messageError } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -54,6 +54,7 @@ export async function POST(
         sender_type: senderType,
         content: body.content,
         message_type: body.message_type || 'text',
+        metadata: body.metadata || null,  // ✅ metadata 필드 추가!
         file_url: body.file_url,
         file_name: body.file_name,
         file_size: body.file_size,

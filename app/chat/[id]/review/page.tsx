@@ -41,14 +41,67 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedRecommendations.length === 0) {
       alert("추천 항목을 최소 1개 이상 선택해주세요.")
       return
     }
 
-    console.log("[v0] Review submitted:", { recommendations: selectedRecommendations, review, chatId: params.id })
-    router.push(`/chat/${params.id}`)
+    try {
+      console.log("[Review] Submitting:", { 
+        recommendations: selectedRecommendations, 
+        review, 
+        chatId: params.id 
+      })
+
+      // 채팅 정보 가져오기
+      const chatResponse = await fetch(`/api/chat/${params.id}`)
+      if (!chatResponse.ok) {
+        throw new Error('채팅 정보를 불러올 수 없습니다.')
+      }
+      const chatData = await chatResponse.json()
+
+      console.log('📋 [Review] Chat data:', {
+        campaign_id: chatData.chat.campaign_id,
+        influencer_id: chatData.chat.influencer_id,
+        advertiser_id: chatData.chat.advertiser_id,
+      })
+
+      // ✅ 필수 필드 확인
+      if (!chatData.chat.campaign_id || !chatData.chat.influencer_id || !chatData.chat.advertiser_id) {
+        throw new Error('필수 정보가 누락되었습니다.')
+      }
+
+      // 후기 저장 API 호출
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          campaign_id: chatData.chat.campaign_id,
+          influencer_id: chatData.chat.influencer_id,
+          advertiser_id: chatData.chat.advertiser_id,  // ✅ 추가
+          rating: 5, // 기본 5점 (선택 항목이 있으면 만족도 높음)
+          content: review || '좋은 협업이었습니다.',
+          tags: selectedRecommendations,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || '후기 등록에 실패했습니다.')
+      }
+
+      const result = await response.json()
+      console.log('✅ [Review] 후기 등록 성공:', result)
+
+      alert('후기가 등록되었습니다!')
+      router.push(`/chat/${params.id}`)
+    } catch (error: any) {
+      console.error('❌ [Review] 후기 등록 실패:', error)
+      alert(error.message || '후기 등록에 실패했습니다.')
+    }
   }
 
   return (
@@ -102,8 +155,8 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
                       onClick={() => toggleRecommendation(option.text)}
                       className={`px-3 py-2 rounded-full text-sm transition-all flex items-center gap-1 ${
                         selectedRecommendations.includes(option.text)
-                          ? "bg-[#51a66f] text-white border border-[#51a66f] font-medium"
-                          : "bg-white text-gray-400 border border-[#51a66f] font-normal"
+                          ? "bg-[#7b68ee] text-white border border-[#7b68ee] font-medium"
+                          : "bg-white text-gray-400 border border-[#7b68ee] font-normal"
                       }`}
                     >
                       <span>{option.icon}</span>
@@ -123,8 +176,8 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
                       onClick={() => toggleRecommendation(option.text)}
                       className={`px-3 py-2 rounded-full text-sm transition-all flex items-center gap-1 ${
                         selectedRecommendations.includes(option.text)
-                          ? "bg-[#51a66f] text-white border border-[#51a66f] font-medium"
-                          : "bg-white text-gray-400 border border-[#51a66f] font-normal"
+                          ? "bg-[#7b68ee] text-white border border-[#7b68ee] font-medium"
+                          : "bg-white text-gray-400 border border-[#7b68ee] font-normal"
                       }`}
                     >
                       <span>{option.icon}</span>
@@ -136,7 +189,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
             </div>
 
             {selectedRecommendations.length > 0 && (
-              <p className="text-sm text-[#51a66f] font-medium">{selectedRecommendations.length}개 선택됨</p>
+              <p className="text-sm text-[#7b68ee] font-medium">{selectedRecommendations.length}개 선택됨</p>
             )}
           </div>
 
@@ -147,7 +200,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
               value={review}
               onChange={(e) => setReview(e.target.value)}
               placeholder="협업 경험을 자세히 공유해주세요."
-              className="w-full h-40 px-4 py-3 bg-white rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#51a66f] focus:bg-white resize-none"
+              className="w-full h-40 px-4 py-3 bg-white rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#7b68ee] focus:bg-white resize-none"
               maxLength={500}
             />
             <div className="flex justify-end items-center text-xs text-gray-500">
@@ -156,9 +209,9 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
           </div>
 
           {/* Tips Section */}
-          <div className="bg-blue-50 rounded-xl p-4 space-y-2">
-            <h3 className="text-sm font-semibold text-blue-900">💡 후기 작성 팁</h3>
-            <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+          <div className="bg-purple-50 rounded-xl p-4 space-y-2">
+            <h3 className="text-sm font-semibold text-[#7b68ee]">💡 후기 작성 팁</h3>
+            <ul className="text-xs text-purple-900 space-y-1 list-disc list-inside">
               <li>협업 과정에서 좋았던 점을 구체적으로 작성해주세요</li>
               <li>소통 방식, 제품 품질, 일정 준수 등을 언급해주세요</li>
               <li>다른 광고주들에게 도움이 되는 정보를 공유해주세요</li>
@@ -180,7 +233,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
           <Button
             onClick={handleSubmit}
             disabled={selectedRecommendations.length === 0}
-            className="w-full h-12 bg-[#51a66f] hover:bg-[#51a66f]/90 text-white font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-12 bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
           >
             후기 등록하기
           </Button>

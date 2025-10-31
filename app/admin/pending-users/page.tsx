@@ -31,7 +31,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { CheckCircle, XCircle, Clock, Search, Users, Filter } from "lucide-react"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { CheckCircle, XCircle, Clock, Search, Users, Instagram } from "lucide-react"
 
 interface User {
   id: string
@@ -39,14 +45,13 @@ interface User {
   name: string | null
   username: string | null
   user_type: string | null
-  approval_status: string
   instagram_username: string | null
   instagram_verification_status: string | null
   created_at: string
   image: string | null
 }
 
-export default function AdminPendingUsersPage() {
+export default function AdminUsersPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
@@ -57,9 +62,9 @@ export default function AdminPendingUsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
-  const [filterStatus, setFilterStatus] = useState("pending")
   const [filterUserType, setFilterUserType] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [activeTab, setActiveTab] = useState("pending") // pending, verified, all
 
   useEffect(() => {
     if (status === "loading") return
@@ -70,7 +75,7 @@ export default function AdminPendingUsersPage() {
     }
 
     checkAdminAndLoadUsers()
-  }, [session, status, router, filterStatus, filterUserType])
+  }, [session, status, router, filterUserType, activeTab])
 
   const checkAdminAndLoadUsers = async () => {
     try {
@@ -89,9 +94,12 @@ export default function AdminPendingUsersPage() {
       setIsAdmin(true)
 
       // 사용자 목록 로드
-      let url = `/api/admin/pending-users?status=${filterStatus}`
+      let url = `/api/admin/users?`
       if (filterUserType !== "all") {
-        url += `&user_type=${filterUserType}`
+        url += `user_type=${filterUserType}&`
+      }
+      if (activeTab !== "all") {
+        url += `instagram_status=${activeTab}`
       }
 
       const response = await fetch(url)
@@ -128,21 +136,21 @@ export default function AdminPendingUsersPage() {
     setFilteredUsers(filtered)
   }, [searchQuery, users])
 
-  const handleApprove = async (userId: string) => {
-    if (!confirm("이 사용자를 승인하시겠습니까?")) return
+  const handleApproveInstagram = async (userId: string) => {
+    if (!confirm("인스타그램 인증을 승인하시겠습니까?")) return
 
     setProcessingId(userId)
     try {
-      const response = await fetch(`/api/admin/users/${userId}/approval`, {
+      const response = await fetch(`/api/admin/users/${userId}/instagram-verification`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
+        body: JSON.stringify({ status: "verified" }),
       })
 
       const data = await response.json()
 
       if (data.success) {
-        alert("사용자가 승인되었습니다.")
+        alert("인스타그램 인증이 승인되었습니다.")
         checkAdminAndLoadUsers()
       } else {
         alert(data.error || "승인에 실패했습니다.")
@@ -155,7 +163,7 @@ export default function AdminPendingUsersPage() {
     }
   }
 
-  const handleReject = (user: User) => {
+  const handleRejectInstagram = (user: User) => {
     setSelectedUser(user)
     setShowRejectDialog(true)
   }
@@ -165,11 +173,11 @@ export default function AdminPendingUsersPage() {
 
     setProcessingId(selectedUser.id)
     try {
-      const response = await fetch(`/api/admin/users/${selectedUser.id}/approval`, {
+      const response = await fetch(`/api/admin/users/${selectedUser.id}/instagram-verification`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: "rejected",
+          status: "idle",
           rejection_reason: rejectionReason,
         }),
       })
@@ -177,7 +185,7 @@ export default function AdminPendingUsersPage() {
       const data = await response.json()
 
       if (data.success) {
-        alert("사용자가 거절되었습니다.")
+        alert("인스타그램 인증이 거절되었습니다.")
         setShowRejectDialog(false)
         setRejectionReason("")
         setSelectedUser(null)
@@ -193,27 +201,28 @@ export default function AdminPendingUsersPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
+  const getInstagramBadge = (status: string | null) => {
+    if (!status || status === "idle") {
+      return (
+        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+          미인증
+        </Badge>
+      )
+    }
+    
     switch (status) {
       case "pending":
         return (
           <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
             <Clock className="w-3 h-3 mr-1" />
-            대기중
+            승인 대기
           </Badge>
         )
-      case "approved":
+      case "verified":
         return (
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
             <CheckCircle className="w-3 h-3 mr-1" />
-            승인됨
-          </Badge>
-        )
-      case "rejected":
-        return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-            <XCircle className="w-3 h-3 mr-1" />
-            거절됨
+            인증 완료
           </Badge>
         )
       default:
@@ -245,13 +254,16 @@ export default function AdminPendingUsersPage() {
     return null
   }
 
+  const pendingCount = users.filter((u) => u.instagram_verification_status === "pending").length
+  const verifiedCount = users.filter((u) => u.instagram_verification_status === "verified").length
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* 헤더 */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">가입 승인 관리</h1>
-          <p className="text-gray-600">회원가입 신청을 검토하고 승인/거절할 수 있습니다.</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">사용자 관리</h1>
+          <p className="text-gray-600">인스타그램 인증 관리 및 사용자 조회</p>
         </div>
 
         {/* 통계 카드 */}
@@ -260,10 +272,8 @@ export default function AdminPendingUsersPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">승인 대기</p>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {users.filter((u) => u.approval_status === "pending").length}명
-                  </p>
+                  <p className="text-sm font-medium text-gray-600">인증 대기</p>
+                  <p className="text-2xl font-bold text-yellow-600">{pendingCount}명</p>
                 </div>
                 <Clock className="w-10 h-10 text-yellow-500" />
               </div>
@@ -274,10 +284,8 @@ export default function AdminPendingUsersPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">승인 완료</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {users.filter((u) => u.approval_status === "approved").length}명
-                  </p>
+                  <p className="text-sm font-medium text-gray-600">인증 완료</p>
+                  <p className="text-2xl font-bold text-green-600">{verifiedCount}명</p>
                 </div>
                 <CheckCircle className="w-10 h-10 text-green-500" />
               </div>
@@ -288,12 +296,10 @@ export default function AdminPendingUsersPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">거절됨</p>
-                  <p className="text-2xl font-bold text-red-600">
-                    {users.filter((u) => u.approval_status === "rejected").length}명
-                  </p>
+                  <p className="text-sm font-medium text-gray-600">전체 사용자</p>
+                  <p className="text-2xl font-bold text-[#7b68ee]">{users.length}명</p>
                 </div>
-                <XCircle className="w-10 h-10 text-red-500" />
+                <Users className="w-10 h-10 text-[#7b68ee]" />
               </div>
             </CardContent>
           </Card>
@@ -302,7 +308,7 @@ export default function AdminPendingUsersPage() {
         {/* 필터 & 검색 */}
         <Card className="mb-6">
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input
@@ -312,17 +318,6 @@ export default function AdminPendingUsersPage() {
                   className="pl-10"
                 />
               </div>
-
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="상태 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pending">승인 대기</SelectItem>
-                  <SelectItem value="approved">승인됨</SelectItem>
-                  <SelectItem value="rejected">거절됨</SelectItem>
-                </SelectContent>
-              </Select>
 
               <Select value={filterUserType} onValueChange={setFilterUserType}>
                 <SelectTrigger>
@@ -338,78 +333,89 @@ export default function AdminPendingUsersPage() {
           </CardContent>
         </Card>
 
-        {/* 사용자 목록 테이블 */}
+        {/* 탭 & 사용자 목록 */}
         <Card>
           <CardContent className="pt-6">
-            {filteredUsers.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">표시할 사용자가 없습니다.</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>이메일</TableHead>
-                    <TableHead>이름</TableHead>
-                    <TableHead>회원 유형</TableHead>
-                    <TableHead>인스타그램</TableHead>
-                    <TableHead>가입일</TableHead>
-                    <TableHead>상태</TableHead>
-                    <TableHead className="text-right">작업</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.email}</TableCell>
-                      <TableCell>{user.name || user.username || "-"}</TableCell>
-                      <TableCell>{getUserTypeBadge(user.user_type)}</TableCell>
-                      <TableCell>
-                        {user.instagram_username ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">@{user.instagram_username}</span>
-                            {user.instagram_verification_status === "verified" && (
-                              <CheckCircle className="w-4 h-4 text-blue-500" />
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-3 mb-6">
+                <TabsTrigger value="pending">
+                  인증 대기 ({pendingCount})
+                </TabsTrigger>
+                <TabsTrigger value="verified">
+                  인증 완료 ({verifiedCount})
+                </TabsTrigger>
+                <TabsTrigger value="all">
+                  전체 ({users.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value={activeTab}>
+                {filteredUsers.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">표시할 사용자가 없습니다.</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>이메일</TableHead>
+                        <TableHead>이름</TableHead>
+                        <TableHead>회원 유형</TableHead>
+                        <TableHead>인스타그램</TableHead>
+                        <TableHead>인증 상태</TableHead>
+                        <TableHead>가입일</TableHead>
+                        <TableHead className="text-right">작업</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.email}</TableCell>
+                          <TableCell>{user.name || user.username || "-"}</TableCell>
+                          <TableCell>{getUserTypeBadge(user.user_type)}</TableCell>
+                          <TableCell>
+                            {user.instagram_username ? (
+                              <span className="text-sm">@{user.instagram_username}</span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
                             )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{new Date(user.created_at).toLocaleDateString("ko-KR")}</TableCell>
-                      <TableCell>{getStatusBadge(user.approval_status)}</TableCell>
-                      <TableCell className="text-right">
-                        {user.approval_status === "pending" && (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                              onClick={() => handleApprove(user.id)}
-                              disabled={processingId === user.id}
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              승인
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                              onClick={() => handleReject(user)}
-                              disabled={processingId === user.id}
-                            >
-                              <XCircle className="w-4 h-4 mr-1" />
-                              거절
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+                          </TableCell>
+                          <TableCell>{getInstagramBadge(user.instagram_verification_status)}</TableCell>
+                          <TableCell>{new Date(user.created_at).toLocaleDateString("ko-KR")}</TableCell>
+                          <TableCell className="text-right">
+                            {user.instagram_verification_status === "pending" && (
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                  onClick={() => handleApproveInstagram(user.id)}
+                                  disabled={processingId === user.id}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  승인
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                                  onClick={() => handleRejectInstagram(user)}
+                                  disabled={processingId === user.id}
+                                >
+                                  <XCircle className="w-4 h-4 mr-1" />
+                                  거절
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -418,9 +424,9 @@ export default function AdminPendingUsersPage() {
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>가입 거절</DialogTitle>
+            <DialogTitle>인스타그램 인증 거절</DialogTitle>
             <DialogDescription>
-              {selectedUser?.email} 님의 가입을 거절하시겠습니까?
+              @{selectedUser?.instagram_username} 님의 인증을 거절하시겠습니까?
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -458,3 +464,10 @@ export default function AdminPendingUsersPage() {
     </div>
   )
 }
+
+
+
+
+
+
+

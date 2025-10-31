@@ -107,7 +107,7 @@ export const authOptions: NextAuthOptions = {
             })
 
             if (!existingUser) {
-              console.log('🆕 신규 카카오 사용자 생성')
+              console.log('🆕 신규 카카오 사용자 생성 (자동 승인)')
               
               const { data: newUser, error: insertError } = await supabaseAdmin
                 .from('users')
@@ -119,7 +119,8 @@ export const authOptions: NextAuthOptions = {
                   provider: 'kakao',
                   provider_id: kakaoId,
                   user_type: null,
-                  approval_status: 'pending',
+                  approval_status: 'approved', // ✅ OAuth는 자동 승인
+                  approved_at: new Date().toISOString(), // ✅ 승인 시간 기록
                   is_admin: false,
                   created_at: new Date().toISOString(),
                 })
@@ -142,7 +143,7 @@ export const authOptions: NextAuthOptions = {
                 user.id = newUser.id
                 user.email = newUser.email
                 user.name = newUser.username
-                console.log('✅ 신규 사용자 ID 설정:', newUser.id)
+                console.log('✅ 신규 사용자 ID 설정 (자동 승인):', newUser.id)
               }
             } else {
               // ✅ 기존 사용자 - user 객체를 완전히 교체
@@ -175,7 +176,7 @@ export const authOptions: NextAuthOptions = {
               .maybeSingle()
 
             if (!existingUser) {
-              console.log('🆕 신규 구글 사용자 생성')
+              console.log('🆕 신규 구글 사용자 생성 (자동 승인)')
               
               const { data: newUser, error: insertError } = await supabaseAdmin
                 .from('users')
@@ -187,7 +188,8 @@ export const authOptions: NextAuthOptions = {
                   provider: 'google',
                   provider_id: account.providerAccountId,
                   user_type: null,
-                  approval_status: 'pending',
+                  approval_status: 'approved', // ✅ OAuth는 자동 승인
+                  approved_at: new Date().toISOString(), // ✅ 승인 시간 기록
                   is_admin: false,
                   created_at: new Date().toISOString(),
                 })
@@ -203,7 +205,7 @@ export const authOptions: NextAuthOptions = {
                 user.id = newUser.id
                 user.email = newUser.email
                 user.name = newUser.username
-                console.log('✅ 신규 구글 사용자 ID 설정:', newUser.id)
+                console.log('✅ 신규 구글 사용자 ID 설정 (자동 승인):', newUser.id)
               }
             } else {
               user.id = existingUser.id

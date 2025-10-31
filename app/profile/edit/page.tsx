@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { TopHeader } from "@/components/top-header"
 import { Input } from "@/components/ui/input"
-import { getAdvertiserProfileCompletion, checkAdvertiserProfileComplete } from "@/lib/profile-utils"
+import { calculateInfluencerProgress, calculateAdvertiserProgress } from '@/lib/profile-utils'
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
 import { Camera, X, Check, Search, CheckCircle2, Circle, Eye, ChevronLeft, MapPin, Lock, Instagram } from "lucide-react"
@@ -327,116 +327,84 @@ export default function EditProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("")
 
   useEffect(() => {
-    const keysToRemove = [
-      "user_avatar",
-      "user_avatar_position_x",
-      "user_avatar_position_y",
-      "user_avatar_scale",
-      "username",
-      "user_email",
-      "user_phone",
-      "influencer_category",
-      "influencer_instagram_id",
-      "influencer_is_instagram_verified",
-      "influencer_instagram_verification_status",
-      "influencer_bio",
-      "influencer_activity_rate",
-      "influencer_activity_rate_private",
-      "influencer_broad_region",
-      "influencer_narrow_region",
-      "influencer_career",
-      "influencer_profile_hashtags",
-      "advertiser_brand_category",
-      "advertiser_store_type",
-      "advertiser_brand_name",
-      "advertiser_brand_link",
-      "advertiser_business_num1",
-      "advertiser_business_num2",
-      "advertiser_business_num3",
-      "advertiser_offline_location",
-      "advertiser_broad_region",
-      "advertiser_narrow_region",
-      "advertiser_online_domain",
-      "advertiser_website",
-      "advertiser_location",
-      "advertiser_company_description",
-    ]
-
-    keysToRemove.forEach((key) => {
-      //localStorage.removeItem(key)
-    })
-
-    const influencerMode = localStorage.getItem("influencer_mode") === "true"
-    setIsInfluencerMode(influencerMode)
-    console.log("[v0] Profile Edit Page - Mode:", influencerMode ? "인플루언서 모드" : "광고주 모드")
-
-    // Load saved avatar and its position/scale
-    const savedAvatar = localStorage.getItem("user_avatar")
-    const savedPosX = localStorage.getItem("user_avatar_position_x")
-    const savedPosY = localStorage.getItem("user_avatar_position_y")
-    const savedScale = localStorage.getItem("user_avatar_scale")
-    
-    if (savedAvatar) {
-      setAvatar(savedAvatar)
-      setPhotoPreview(savedAvatar) // Also set preview to show it's saved
-    }
-    if (savedPosX && savedPosY && savedScale) {
-      setSavedImagePosition({ x: Number.parseFloat(savedPosX), y: Number.parseFloat(savedPosY) })
-      setSavedImageScale(Number.parseFloat(savedScale))
-    }
-
-    if (influencerMode) {
-      const savedCategory = localStorage.getItem("influencer_category")
-      const savedInstagramId = localStorage.getItem("influencer_instagram_id")
-      const savedIsInstagramVerified = localStorage.getItem("influencer_is_instagram_verified")
-      const savedInstagramVerificationStatus = localStorage.getItem("influencer_instagram_verification_status")
-      const savedBio = localStorage.getItem("influencer_bio")
-      const savedActivityRate = localStorage.getItem("influencer_activity_rate")
-      const savedActivityRatePrivacy = localStorage.getItem("influencer_activity_rate_private")
-      const savedBroadRegion = localStorage.getItem("influencer_broad_region")
-      const savedNarrowRegion = localStorage.getItem("influencer_narrow_region")
-      const savedCareer = localStorage.getItem("influencer_career")
-      const savedProfileHashtags = localStorage.getItem("influencer_profile_hashtags")
-
-      if (savedCategory) setCategory(savedCategory)
-      if (savedInstagramId) setInstagramId(savedInstagramId)
-      if (savedIsInstagramVerified) setIsInstagramVerified(savedIsInstagramVerified === "true")
-      if (savedInstagramVerificationStatus) {
-        setInstagramVerificationStatus(savedInstagramVerificationStatus as "idle" | "pending" | "verified")
+  // DB에서 프로필 데이터 불러오기
+  const loadProfile = async () => {
+    try {
+      const response = await fetch('/api/profile')
+      const data = await response.json()
+      
+      if (data.success && data.profile) {
+        const profile = data.profile
+        
+        console.log('✅ DB에서 프로필 불러오기 성공:', profile)
+        
+        // 프로필 이미지 & 위치
+        if (profile.image) {
+          setAvatar(profile.image)
+          setPhotoPreview(profile.image)
+          setSavedImagePosition({ 
+            x: profile.image_position_x || 0, 
+            y: profile.image_position_y || 0 
+          })
+          setSavedImageScale(profile.image_scale || 1.0)
+        }
+        
+        // 회원 유형 확인
+        const influencerMode = profile.user_type === 'INFLUENCER'
+        setIsInfluencerMode(influencerMode)
+        console.log('[v0] Profile Edit Page - Mode:', influencerMode ? '인플루언서 모드' : '광고주 모드')
+        
+        if (influencerMode) {
+          // 인플루언서 필드
+          if (profile.category) setCategory(profile.category)
+          if (profile.instagram_username) setInstagramId(profile.instagram_username)
+          if (profile.instagram_verification_status) {
+            setInstagramVerificationStatus(profile.instagram_verification_status as 'idle' | 'pending' | 'verified')
+          }
+          if (profile.bio) setBio(profile.bio)
+          if (profile.activity_rate) setActivityRate(profile.activity_rate)
+          if (profile.activity_rate_private !== null) {
+            setIsActivityRatePrivate(profile.activity_rate_private)
+          }
+          if (profile.broad_region) setBroadRegion(profile.broad_region)
+          if (profile.narrow_region) setNarrowRegion(profile.narrow_region)
+          if (profile.career) setCareer(profile.career)
+          if (profile.profile_hashtags && Array.isArray(profile.profile_hashtags)) {
+            setProfileHashtags(profile.profile_hashtags)
+          }
+        } else {
+          // 광고주 필드
+          if (profile.brand_category) setBrandCategory(profile.brand_category)
+          if (profile.store_type) setStoreType(profile.store_type)
+          if (profile.brand_name) setBrandName(profile.brand_name)
+          if (profile.brand_link) setBrandLink(profile.brand_link)
+          
+          // 사업자번호 분리 (123-45-67890 → 123, 45, 67890)
+          if (profile.business_number) {
+            const parts = profile.business_number.split('-')
+            if (parts.length === 3) {
+              setBusinessNum1(parts[0])
+              setBusinessNum2(parts[1])
+              setBusinessNum3(parts[2])
+            }
+          }
+          
+          if (profile.offline_location) setOfflineLocation(profile.offline_location)
+          if (profile.broad_region) setBroadRegion(profile.broad_region)
+          if (profile.narrow_region) setNarrowRegion(profile.narrow_region)
+          if (profile.online_domain) setOnlineDomain(profile.online_domain)
+        }
+      } else {
+        console.log('ℹ️ 저장된 프로필 없음 - 새 프로필 작성')
       }
-      if (savedBio) setBio(savedBio)
-      if (savedActivityRate) setActivityRate(savedActivityRate)
-      if (savedActivityRatePrivacy) setIsActivityRatePrivate(savedActivityRatePrivacy === "true")
-      if (savedBroadRegion) setBroadRegion(savedBroadRegion)
-      if (savedNarrowRegion) setNarrowRegion(savedNarrowRegion)
-      if (savedCareer) setCareer(savedCareer)
-      if (savedProfileHashtags) setProfileHashtags(JSON.parse(savedProfileHashtags))
+    } catch (error) {
+      console.error('❌ 프로필 불러오기 오류:', error)
+      alert('프로필을 불러오는 중 오류가 발생했습니다.')
     }
-
-    if (!influencerMode) {
-      const savedBrandCategory = localStorage.getItem("advertiser_brand_category")
-      const savedStoreType = localStorage.getItem("advertiser_store_type")
-      const savedBrandName = localStorage.getItem("advertiser_brand_name")
-      const savedBrandLink = localStorage.getItem("advertiser_brand_link") // Load brand link
-      const savedBusinessNum1 = localStorage.getItem("advertiser_business_num1")
-      const savedBusinessNum2 = localStorage.getItem("advertiser_business_num2")
-      const savedBusinessNum3 = localStorage.getItem("advertiser_business_num3")
-      const savedOfflineLocation = localStorage.getItem("advertiser_offline_location")
-      const savedBroadRegion = localStorage.getItem("advertiser_broad_region")
-      const savedNarrowRegion = localStorage.getItem("advertiser_narrow_region")
-
-      if (savedBrandCategory) setBrandCategory(savedBrandCategory)
-      if (savedStoreType) setStoreType(savedStoreType)
-      if (savedBrandName) setBrandName(savedBrandName)
-      if (savedBrandLink) setBrandLink(savedBrandLink) // Set brand link
-      if (savedBusinessNum1) setBusinessNum1(savedBusinessNum1)
-      if (savedBusinessNum2) setBusinessNum2(savedBusinessNum2)
-      if (savedBusinessNum3) setBusinessNum3(savedBusinessNum3)
-      if (savedOfflineLocation) setOfflineLocation(savedOfflineLocation)
-      if (savedBroadRegion) setBroadRegion(savedBroadRegion)
-      if (savedNarrowRegion) setNarrowRegion(savedNarrowRegion)
-    }
-  }, [])
+  }
+  
+  loadProfile()
+}, [])
 
   useEffect(() => {
     if (isInfluencerMode) {
@@ -551,90 +519,8 @@ const handleClearPlace = () => {
   setPlaceSearchQuery("")
   setIsPlaceSelected(false)
 }
-  const calculateInfluencerProgress = () => {
-  let progress = 0
-
-  // 헬퍼 함수: 문자열이 비어있지 않은지 체크
-  const hasValue = (value: any): boolean => {
-    return value != null && String(value).trim() !== ""
-  }
-
-  // 1. 프로필 사진 (15점)
-  if (photoPreview) progress += 15
-
-  // 2. 카테고리 (15점)
-  if (hasValue(category)) progress += 15
-
-  // 3. 자기소개 (15점)
-  if (hasValue(bio)) progress += 15
-
-  // 4. 인스타그램 ID (15점 + 인증 시 5점)
-  if (hasValue(instagramId)) {
-    progress += 15
-    if (isInstagramVerified) progress += 5
-  }
-
-  // 5. 지역 (15점)
-  if (hasValue(broadRegion)) {
-    if (String(broadRegion) === "전체") {
-      progress += 15
-    } else if (hasValue(narrowRegion)) {
-      progress += 15
-    }
-  }
-
-  // 6. 활동 빈도 (5점)
-  if (hasValue(activityRate)) progress += 5
-
-  // 7. 해시태그 (5점)
-  if (profileHashtags && Array.isArray(profileHashtags) && profileHashtags.length > 0) {
-    progress += 5
-  }
-
-  return Math.min(100, progress)
-}
-  const calculateAdvertiserProgress = () => {
-  let filledFields = 0
-  let totalFields = 0
-
-  const businessNumberComplete = businessNum1.length === 3 && businessNum2.length === 2 && businessNum3.length === 5
-
-  // ✅ 항상 필수: brandCategory, storeType, brandLink, businessNumber (총 4개)
   
-  // 1. Brand category
-  totalFields++
-  if (brandCategory && brandCategory.trim() !== "") filledFields++
-
-  // 2. Store type
-  totalFields++
-  if (storeType && storeType.trim() !== "") filledFields++
-
-  // 3. Brand link
-  totalFields++
-  if (brandLink && brandLink.trim() !== "") filledFields++
-
-  // 4. Business number
-  totalFields++
-  if (businessNumberComplete) filledFields++
-
-  // ✅ 판매 형태별 조건부 필수
-  if (storeType === "online") {
-    // 온라인: brandName만 필수
-    totalFields++
-    if (brandName && brandName.trim() !== "") filledFields++
-  } else if (storeType === "offline") {
-    // 오프라인: offlineLocation만 필수
-    totalFields++
-    if (offlineLocation && offlineLocation.trim() !== "") filledFields++
-  } else if (storeType === "both") {
-    // 둘다: brandName + offlineLocation 둘다 필수
-    totalFields += 2
-    if (brandName && brandName.trim() !== "") filledFields++
-    if (offlineLocation && offlineLocation.trim() !== "") filledFields++
-  }
-
-  return Math.round((filledFields / totalFields) * 100)
-}
+  
 
   const handleSelectCategory = (selectedCategory: string) => {
     setCategory(category === selectedCategory ? "" : selectedCategory)
@@ -803,54 +689,92 @@ const handleInstagramVerify = async () => {
   }
 };
 
-  const handleSave = () => {
-  if (photoPreview) {
-    localStorage.setItem("user_avatar", photoPreview)
-    localStorage.setItem("user_avatar_position_x", savedImagePosition.x.toString())
-    localStorage.setItem("user_avatar_position_y", savedImagePosition.y.toString())
-    localStorage.setItem("user_avatar_scale", savedImageScale.toString())
-  }
-  // Advertisers save common fields here too
-  localStorage.setItem("username", username)
-  localStorage.setItem("user_email", email)
-  localStorage.setItem("user_phone", phone)
-
-  if (isInfluencerMode) {
-    localStorage.setItem("influencer_activity_rate_private", isActivityRatePrivate.toString())
-    localStorage.setItem("influencer_profile_hashtags", JSON.stringify(profileHashtags))
-    localStorage.setItem("influencer_category", category)
-    localStorage.setItem("influencer_instagram_id", instagramId)
-    localStorage.setItem("influencer_is_instagram_verified", isInstagramVerified.toString())
-    localStorage.setItem("influencer_instagram_verification_status", instagramVerificationStatus)
-    localStorage.setItem("influencer_bio", bio)
-    localStorage.setItem("influencer_activity_rate", activityRate)
-    localStorage.setItem("influencer_broad_region", broadRegion)
-    localStorage.setItem("influencer_narrow_region", narrowRegion)
-    localStorage.setItem("influencer_career", career)
-  } else {
-    localStorage.setItem("advertiser_brand_category", brandCategory)
-    localStorage.setItem("advertiser_store_type", storeType)
-    localStorage.setItem("advertiser_brand_name", brandName)
-    localStorage.setItem("advertiser_brand_link", brandLink) // Save brand link (선택)
-    localStorage.setItem("advertiser_business_num1", businessNum1)
-    localStorage.setItem("advertiser_business_num2", businessNum2)
-    localStorage.setItem("advertiser_business_num3", businessNum3)
-    localStorage.setItem("advertiser_offline_location", offlineLocation)
-    localStorage.setItem("advertiser_broad_region", broadRegion)
-    localStorage.setItem("advertiser_narrow_region", narrowRegion)
-    localStorage.setItem("advertiser_online_domain", onlineDomain)
-    localStorage.setItem("advertiser_website", website)
-    localStorage.setItem("advertiser_location", location)
-    localStorage.setItem("advertiser_company_description", companyDescription)
+ const handleSave = async () => {
+  try {
+    console.log('💾 프로필 저장 시작...')
     
-    // ✅ 광고주 프로필 완성도 체크 및 알림
-    const completion = getAdvertiserProfileCompletion()
-    if (completion === 100) {
-      alert("🎉 프로필이 100% 완성되었습니다!\n이제 캠페인을 작성할 수 있습니다.")
+    // 저장할 데이터 구성
+    const profileData: any = {
+      user_type: isInfluencerMode ? 'INFLUENCER' : 'ADVERTISER',
     }
+    
+    // 프로필 이미지
+    if (photoPreview) {
+      profileData.image = photoPreview
+      profileData.image_position_x = savedImagePosition.x
+      profileData.image_position_y = savedImagePosition.y
+      profileData.image_scale = savedImageScale
+    }
+    
+    if (isInfluencerMode) {
+      // 인플루언서 데이터
+      profileData.category = category
+      profileData.instagram_username = instagramId
+      profileData.bio = bio
+      profileData.activity_rate = activityRate
+      profileData.activity_rate_private = isActivityRatePrivate
+      profileData.broad_region = broadRegion
+      profileData.narrow_region = narrowRegion
+      profileData.career = career
+      profileData.profile_hashtags = profileHashtags
+      
+      console.log('📊 인플루언서 데이터:', profileData)
+    } else {
+      // 광고주 데이터
+      profileData.brand_category = brandCategory
+      profileData.store_type = storeType
+      profileData.brand_name = brandName
+      profileData.brand_link = brandLink
+      
+      // 사업자번호 합치기
+      if (businessNum1 && businessNum2 && businessNum3) {
+        profileData.business_number = `${businessNum1}-${businessNum2}-${businessNum3}`
+      }
+      
+      profileData.offline_location = offlineLocation
+      profileData.broad_region = broadRegion
+      profileData.narrow_region = narrowRegion
+      profileData.online_domain = onlineDomain
+      
+      console.log('📊 광고주 데이터:', profileData)
+    }
+    
+    // DB에 저장
+    const response = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(profileData),
+    })
+    
+    const data = await response.json()
+    
+    if (data.success) {
+      console.log('✅ 프로필 저장 성공')
+      
+      // ✅ 광고주 프로필 완성도 체크
+      if (!isInfluencerMode) {
+        const completion = calculateAdvertiserProgress(profileData)  // ✅ profileData 전달!
+        if (completion === 100) {
+          alert('🎉 프로필이 100% 완성되었습니다!\n이제 캠페인을 작성할 수 있습니다.')
+        } else {
+          alert('프로필이 저장되었습니다.')
+        }
+      } else {
+        alert('프로필이 저장되었습니다.')
+      }
+      
+      router.back()
+    } else {
+      console.error('❌ 저장 실패:', data.error)
+      alert(data.error || '프로필 저장에 실패했습니다.')
+    }
+    
+  } catch (error) {
+    console.error('❌ 프로필 저장 오류:', error)
+    alert('프로필을 저장하는 중 오류가 발생했습니다.')
   }
-
-  router.back()
 }
 
   const handleCancel = () => {
@@ -1074,10 +998,24 @@ const handleInstagramVerify = async () => {
   }
 
   // ADVERTISER MODE UI
-  const progressPercentage = calculateAdvertiserProgress()
-  if (!isInfluencerMode) {
-    return (
-      <div className="min-h-screen bg-white">
+  // ADVERTISER MODE UI
+// ✅ 현재 입력값으로 프로필 객체 생성
+const getCurrentAdvertiserProfile = () => ({
+  brand_category: brandCategory,
+  store_type: storeType,
+  brand_name: brandName,
+  brand_link: brandLink,
+  business_number: businessNum1 && businessNum2 && businessNum3 
+    ? `${businessNum1}-${businessNum2}-${businessNum3}` 
+    : '',
+  offline_location: offlineLocation,
+})
+
+const progressPercentage = calculateAdvertiserProgress(getCurrentAdvertiserProfile())
+
+if (!isInfluencerMode) {
+  return (
+    <div className="min-h-screen bg-white">
         <TopHeader title="프로필 수정" showSearch={false} showNotifications={false} showHeart={false} showBack={true} />
 
         <div className="fixed top-[var(--gnb-height)] left-0 right-0 w-full bg-gray-100 h-1 z-30">
@@ -1467,9 +1405,23 @@ const handleInstagramVerify = async () => {
   }
 
   // INFLUENCER MODE UI
-  const influencerProgressPercentage = calculateInfluencerProgress()
-  return (
-    <div className="min-h-screen bg-white">
+ // INFLUENCER MODE UI
+// ✅ 현재 입력값으로 프로필 객체 생성
+const getCurrentInfluencerProfile = () => ({
+  image: photoPreview,
+  category,
+  bio,
+  instagram_verification_status: instagramVerificationStatus,
+  broad_region: broadRegion,
+  narrow_region: narrowRegion,
+  activity_rate: activityRate,
+  profile_hashtags: profileHashtags,
+})
+
+const influencerProgressPercentage = calculateInfluencerProgress(getCurrentInfluencerProfile())
+
+return (
+  <div className="min-h-screen bg-white">
       <TopHeader
         title="프로필 수정"
         showSearch={false}

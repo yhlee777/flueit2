@@ -24,17 +24,20 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 [API] Proposal:', { userId, advertiserId, campaignId })
 
-    // 1. 인플루언서 프로필 조회
+    // 1. 인플루언서 프로필 조회 (전체 정보)
     const { data: influencer, error: influencerError } = await supabaseAdmin
       .from('users')
-      .select('id, username, name, image, user_type')
+      .select('id, username, name, image, user_type, bio, follower_count, engagement_rate, profile_hashtags, instagram_handle, category')
       .eq('id', userId)
       .eq('user_type', 'INFLUENCER')
       .single()
 
     if (influencerError || !influencer) {
+      console.error('❌ [API] Influencer not found:', influencerError)
       return NextResponse.json({ error: '인플루언서 정보를 찾을 수 없습니다' }, { status: 404 })
     }
+
+    console.log('✅ [API] Influencer found:', influencer.name)
 
     // 2. 광고주 정보 조회
     const { data: advertiser, error: advertiserError } = await supabaseAdmin
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (advertiserError || !advertiser) {
+      console.error('❌ [API] Advertiser not found:', advertiserError)
       return NextResponse.json({ error: '광고주 정보를 찾을 수 없습니다' }, { status: 404 })
     }
 
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (campaignError || !campaign) {
+      console.error('❌ [API] Campaign not found:', campaignError)
       return NextResponse.json({ error: '캠페인 정보를 찾을 수 없습니다' }, { status: 404 })
     }
 
@@ -68,6 +73,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingChat) {
+      console.log('⚠️ [API] Chat already exists:', existingChat.id)
       return NextResponse.json({ 
         error: '이미 제안서를 보냈습니다',
         chatId: existingChat.id 
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ [API] Chat created:', chat.id)
 
-    // 6. 시스템 메시지: 인플루언서 프로필 카드
+    // 6. 프로필 카드 메시지 전송
     const { error: profileError } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -110,20 +116,25 @@ export async function POST(request: NextRequest) {
         content: '인플루언서 프로필',
         message_type: 'profile_card',
         metadata: {
-          userId: influencer.id,
-          username: influencer.username,
-          name: influencer.name,
+          name: influencer.name || influencer.username,
+          username: influencer.instagram_handle || influencer.username,
           avatar: influencer.image,
-          // 추가 프로필 정보 (나중에 확장)
+          follower_count: influencer.follower_count,
+          engagement_rate: influencer.engagement_rate,
+          bio: influencer.bio,
+          hashtags: influencer.profile_hashtags || [],
         },
         is_read: false,
       })
 
     if (profileError) {
       console.error('❌ [API] Profile card error:', profileError)
+      // 프로필 카드 전송 실패해도 계속 진행
+    } else {
+      console.log('✅ [API] Profile card sent')
     }
 
-    // 7. 제안서 메시지
+    // 7. 제안서 메시지 전송
     const { error: proposalError } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -139,6 +150,8 @@ export async function POST(request: NextRequest) {
       console.error('❌ [API] Proposal message error:', proposalError)
       return NextResponse.json({ error: '제안서 전송 실패' }, { status: 500 })
     }
+
+    console.log('✅ [API] Proposal message sent')
 
     // 8. 채팅방 updated_at 갱신
     await supabaseAdmin

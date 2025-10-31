@@ -29,6 +29,10 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
   const [proposalMessage, setProposalMessage] = useState("")
   const [sending, setSending] = useState(false)
 
+  // ✅ 추가: 프로필 완성도 상태
+  const [profileProgress, setProfileProgress] = useState<number>(0)
+  const [profileChecked, setProfileChecked] = useState(false)
+
   useEffect(() => {
     // 인플루언서 모드 확인
     const influencerMode = localStorage.getItem("influencer_mode") === "true"
@@ -36,8 +40,57 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
 
     loadCampaign()
     loadFavoriteStatus()
+    
+    // ✅ 추가: 인플루언서 모드일 때 프로필 완성도 체크
+    if (influencerMode) {
+      checkProfileCompleteness()
+    }
   }, [campaignId])
 
+  // ✅ 추가: 프로필 완성도 체크 함수
+  const checkProfileCompleteness = async () => {
+  try {
+    const response = await fetch('/api/profile')  // ✅ 경로 수정
+    const data = await response.json()
+
+    if (!data.success || !data.profile) {
+      setProfileProgress(0)
+      setProfileChecked(true)
+      return
+    }
+
+    const profile = data.profile
+    let progress = 0
+    
+    // ✅ 프로필 편집 페이지와 동일한 로직 사용
+    if (profile.image) progress += 15
+    if (profile.category) progress += 15
+    if (profile.bio) progress += 15
+    
+    // ✅ instagram_verification_status === 'verified'로 통일
+    if (profile.instagram_verification_status === 'verified') progress += 20
+    
+    if (profile.broad_region) {
+      if (profile.broad_region === "전체") {
+        progress += 15
+      } else if (profile.narrow_region) {
+        progress += 15
+      }
+    }
+    
+    if (profile.activity_rate) progress += 10
+    if (profile.profile_hashtags?.length > 0) progress += 10
+
+    console.log('📊 프로필 완성도:', progress + '%')
+    setProfileProgress(progress)
+    setProfileChecked(true)
+    
+  } catch (error) {
+    console.error('프로필 체크 오류:', error)
+    setProfileProgress(0)
+    setProfileChecked(true)
+  }
+}
   const loadCampaign = async () => {
     try {
       const response = await fetch(`/api/campaigns/${campaignId}`)
@@ -75,7 +128,7 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
     }
   }
 
-  // ✅ 찜하기 토글 (수정)
+  // ✅ 찜하기 토글
   const toggleFavorite = () => {
     try {
       const favorites = localStorage.getItem("favorite_campaigns")
@@ -102,11 +155,39 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
     }
   }
 
+  // ✅ 지원 가능 여부 체크
+  const canApply = () => {
+    if (!campaign) return false
+    
+    // 구인 마감 체크
+    if (campaign.status === "구인 마감") return false
+    
+    // 모집 인원 초과 체크
+    if (campaign.applicants >= campaign.recruit_count) return false
+    
+    // ✅ 추가: 프로필 완성도 체크 (60% 이상 필요)
+    if (isInfluencerMode && profileProgress < 60) return false
+    
+    return true
+  }
+
   // ✅ 제안서 모달 열기
   const openProposalModal = () => {
     if (!session?.user) {
       alert("로그인이 필요합니다.")
       router.push("/login")
+      return
+    }
+
+    // ✅ 캠페인 상태 체크
+    if (campaign.status === "구인 마감") {
+      alert("마감된 캠페인입니다.")
+      return
+    }
+
+    // ✅ 모집 인원 초과 체크
+    if (campaign.applicants >= campaign.recruit_count) {
+      alert("모집 인원이 마감되었습니다.")
       return
     }
 
@@ -491,14 +572,25 @@ export default function CampaignDetailPage({ params }: { params: { id: string } 
               />
             </Button>
 
-            {/* 제안서 보내기 버튼 */}
+            {/* ✅ 제안서 보내기 버튼 - 상태에 따라 비활성화 */}
             <Button
               size="lg"
-              className="flex-1 h-14 rounded-xl bg-[#7b68ee] hover:bg-[#6a5acd] text-white font-semibold text-base shadow-lg"
+              className={`flex-1 h-14 rounded-xl font-semibold text-base shadow-lg ${
+                canApply()
+                  ? "bg-[#7b68ee] hover:bg-[#6a5acd] text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
               onClick={openProposalModal}
+              disabled={!canApply()}
             >
               <Send className="w-5 h-5 mr-2" />
-              협업 제안하기
+              {campaign.status === "구인 마감" 
+                ? "마감된 캠페인" 
+                : campaign.applicants >= campaign.recruit_count
+                  ? "모집 인원 초과"
+                  : profileProgress < 60
+                    ? `프로필 완성 필요 (${profileProgress}%)`
+                    : "협업 제안하기"}
             </Button>
           </div>
         </div>

@@ -24,18 +24,19 @@ export default function LoginPage() {
     setError("")
   }
 
-  // 간단한 소셜 로그인 (자동 리다이렉트)
+  // ✅ 소셜 로그인: 성공 후 공통 라우트(/post-login)로
   const handleKakaoLogin = () => {
-    signIn('kakao', { callbackUrl: '/' })
+    signIn("kakao", { callbackUrl: "/post-login" })
   }
 
   const handleGoogleLogin = () => {
-    signIn('google', { callbackUrl: '/' })
+    signIn("google", { callbackUrl: "/post-login" })
   }
 
+  // ✅ 크리덴셜 로그인: 성공 후 /post-login으로
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    
+
     if (!formData.username || !formData.password) {
       setError("아이디와 비밀번호를 입력해주세요.")
       return
@@ -45,7 +46,7 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const result = await signIn('credentials', {
+      const result = await signIn("credentials", {
         username: formData.username,
         password: formData.password,
         redirect: false,
@@ -57,12 +58,11 @@ export default function LoginPage() {
       }
 
       if (result?.ok) {
-        router.push('/')
-        router.refresh()
+        router.push("/post-login")
       }
     } catch (error) {
-      console.error('로그인 오류:', error)
-      setError('로그인 중 오류가 발생했습니다.')
+      console.error("로그인 오류:", error)
+      setError("로그인 중 오류가 발생했습니다.")
     } finally {
       setIsLoading(false)
     }
@@ -102,10 +102,10 @@ export default function LoginPage() {
               <Label htmlFor="username" className="font-semibold">
                 아이디
               </Label>
-              <Input 
-                id="username" 
-                type="text" 
-                placeholder="아이디를 입력하세요" 
+              <Input
+                id="username"
+                type="text"
+                placeholder="아이디를 입력하세요"
                 className="rounded-xl h-12"
                 value={formData.username}
                 onChange={handleInputChange("username")}
@@ -117,10 +117,10 @@ export default function LoginPage() {
               <Label htmlFor="password" className="font-semibold">
                 비밀번호
               </Label>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="비밀번호를 입력하세요" 
+              <Input
+                id="password"
+                type="password"
+                placeholder="비밀번호를 입력하세요"
                 className="rounded-xl h-12"
                 value={formData.password}
                 onChange={handleInputChange("password")}

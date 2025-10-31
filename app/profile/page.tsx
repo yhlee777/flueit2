@@ -20,9 +20,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
-// ❌ 삭제: import { useApplicationStore } from "@/lib/application-store"
 import { useChatStore } from "@/lib/chat-store"
-import { checkAdvertiserProfileComplete, getAdvertiserProfileCompletion } from "@/lib/profile-utils"
+import { calculateInfluencerProgress, calculateAdvertiserProgress } from '@/lib/profile-utils'
 import {
   Check,
   Heart,
@@ -100,9 +99,6 @@ export default function ProfilePage() {
   const router = useRouter()
   const { data: session } = useSession()
   
-  // ❌ 삭제: const { getApplications, removeApplication } = useApplicationStore()
-  // ❌ 삭제: const applications = getApplications()
-  
   const { getChatsForInfluencer } = useChatStore()
 
   // ✅ 추가: DB에서 지원 내역 가져오기
@@ -113,7 +109,7 @@ export default function ProfilePage() {
   const [userCampaigns, setUserCampaigns] = useState<Campaign[]>([])
   const [loadingCampaigns, setLoadingCampaigns] = useState(false)
 
-  const [isInfluencerMode, setIsInfluencerMode] = useState(true)
+  const [isInfluencerMode, setIsInfluencerMode] = useState(false)
   const [isProfileComplete, setIsProfileComplete] = useState(false)
   const [profileCompletion, setProfileCompletion] = useState(0)
   const [influencerProfileCompletion, setInfluencerProfileCompletion] = useState(0)
@@ -154,40 +150,6 @@ export default function ProfilePage() {
     trustScore: 4.8,
     hashtags: ["#뷰티", "#스킨케어", "#체험단"],
   })
-
-  const calculateInfluencerProfileCompletion = () => {
-    let completion = 0
-    const avatar = localStorage.getItem("user_avatar")
-    const name = localStorage.getItem("username")
-    const bio = localStorage.getItem("influencer_bio")
-    const instagram = localStorage.getItem("influencer_instagram_id")
-    const category = localStorage.getItem("influencer_category")
-    const hashtagsStr = localStorage.getItem("influencer_profile_hashtags")
-    let hashtags: string[] = []
-    try {
-      hashtags = hashtagsStr ? JSON.parse(hashtagsStr) : []
-    } catch {
-      hashtags = []
-    }
-
-    const profileData = {
-      hasAvatar: avatar !== null && avatar !== "" && avatar !== "null",
-      hasName: name !== null && name !== "" && name !== "null",
-      hasBio: bio !== null && bio !== "" && bio !== "null",
-      hasInstagram: instagram !== null && instagram !== "" && instagram !== "null",
-      hasCategory: category !== null && category !== "" && category !== "null",
-      hasHashtags: hashtags.length > 0,
-    }
-
-    if (profileData.hasAvatar) completion += 16.67
-    if (profileData.hasName) completion += 16.67
-    if (profileData.hasBio) completion += 16.67
-    if (profileData.hasInstagram) completion += 16.67
-    if (profileData.hasCategory) completion += 16.67
-    if (profileData.hasHashtags) completion += 16.67
-
-    return Math.round(completion)
-  }
 
   // ✅ useCallback으로 감싸기
   const fetchMyApplications = useCallback(async () => {
@@ -239,9 +201,19 @@ export default function ProfilePage() {
     }
   }, [session?.user?.id])
 
+  // ✅ 세션에서 userType 확인하여 모드 설정
   useEffect(() => {
-    const influencerMode = localStorage.getItem("influencer_mode") === "true"
-    setIsInfluencerMode(influencerMode)
+    if (session?.user) {
+      const userType = (session.user as any).userType
+      const influencerMode = userType === 'INFLUENCER'
+      setIsInfluencerMode(influencerMode)
+      
+      console.log('👤 프로필 페이지 모드:', {
+        userType,
+        influencerMode,
+        userId: session.user.id
+      })
+    }
 
     const savedAvatar = localStorage.getItem("user_avatar")
     const savedPosX = localStorage.getItem("user_avatar_position_x")
@@ -260,17 +232,32 @@ export default function ProfilePage() {
       setInstagramVerificationStatus(savedVerificationStatus as "idle" | "pending" | "verified")
     }
 
-    if (!influencerMode) {
-      const completion = getAdvertiserProfileCompletion()
-      const isComplete = checkAdvertiserProfileComplete()
-      setProfileCompletion(completion)
-      setIsProfileComplete(isComplete)
-    } else {
-      const influencerCompletion = calculateInfluencerProfileCompletion()
-      setInfluencerProfileCompletion(influencerCompletion)
-      setIsInfluencerProfileComplete(influencerCompletion === 100)
+    // ✅ DB에서 프로필 완성도 로드
+    const loadProfileCompletion = async () => {
+      try {
+        const response = await fetch('/api/profile')
+        const data = await response.json()
+
+        if (data.success && data.profile) {
+          const profile = data.profile
+
+          if (profile.user_type === 'ADVERTISER') {
+            const completion = calculateAdvertiserProgress(profile)
+            setProfileCompletion(completion)
+            setIsProfileComplete(completion === 100)
+          } else if (profile.user_type === 'INFLUENCER') {
+            const completion = calculateInfluencerProgress(profile)
+            setInfluencerProfileCompletion(completion)
+            setIsInfluencerProfileComplete(completion === 100)
+          }
+        }
+      } catch (error) {
+        console.error('프로필 완성도 로드 오류:', error)
+      }
     }
-  }, [])
+
+    loadProfileCompletion()
+  }, [session])
 
   // ✅ 의존성 배열 수정
   useEffect(() => {
@@ -286,35 +273,60 @@ export default function ProfilePage() {
     }
   }, [isInfluencerMode, session?.user?.id, fetchUserCampaigns])
 
-  // ✅ useCallback으로 감싸고 불필요한 새로고침 제거
-  const handleVisibilityChange = useCallback(() => {
+  // ✅ useCallback으로 감싸고 DB에서 프로필 완성도 로드
+  const handleVisibilityChange = useCallback(async () => {
     if (document.hidden) return
 
-    if (!isInfluencerMode) {
-      const completion = getAdvertiserProfileCompletion()
-      const isComplete = checkAdvertiserProfileComplete()
-      setProfileCompletion(completion)
-      setIsProfileComplete(isComplete)
-    } else {
-      const influencerCompletion = calculateInfluencerProfileCompletion()
-      setInfluencerProfileCompletion(influencerCompletion)
-      setIsInfluencerProfileComplete(influencerCompletion === 100)
-    }
-  }, [isInfluencerMode])
+    try {
+      const response = await fetch('/api/profile')
+      const data = await response.json()
 
-  // ✅ useCallback으로 감싸고 불필요한 새로고침 제거
-  const handleFocus = useCallback(() => {
-    if (!isInfluencerMode) {
-      const completion = getAdvertiserProfileCompletion()
-      const isComplete = checkAdvertiserProfileComplete()
-      setProfileCompletion(completion)
-      setIsProfileComplete(isComplete)
-    } else {
-      const influencerCompletion = calculateInfluencerProfileCompletion()
-      setInfluencerProfileCompletion(influencerCompletion)
-      setIsInfluencerProfileComplete(influencerCompletion === 100)
+      if (!data.success || !data.profile) {
+        console.log('프로필 없음')
+        return
+      }
+
+      const profile = data.profile
+
+      if (profile.user_type === 'ADVERTISER') {
+        const completion = calculateAdvertiserProgress(profile)
+        setProfileCompletion(completion)
+        setIsProfileComplete(completion === 100)
+        console.log('📊 광고주 프로필 완성도:', completion + '%')
+      } else if (profile.user_type === 'INFLUENCER') {
+        const completion = calculateInfluencerProgress(profile)
+        setInfluencerProfileCompletion(completion)
+        setIsInfluencerProfileComplete(completion === 100)
+        console.log('📊 인플루언서 프로필 완성도:', completion + '%')
+      }
+    } catch (error) {
+      console.error('프로필 완성도 체크 오류:', error)
     }
-  }, [isInfluencerMode])
+  }, [])
+
+  // ✅ useCallback으로 감싸고 DB에서 프로필 완성도 로드
+  const handleFocus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/profile')
+      const data = await response.json()
+
+      if (!data.success || !data.profile) return
+
+      const profile = data.profile
+
+      if (profile.user_type === 'ADVERTISER') {
+        const completion = calculateAdvertiserProgress(profile)
+        setProfileCompletion(completion)
+        setIsProfileComplete(completion === 100)
+      } else if (profile.user_type === 'INFLUENCER') {
+        const completion = calculateInfluencerProgress(profile)
+        setInfluencerProfileCompletion(completion)
+        setIsInfluencerProfileComplete(completion === 100)
+      }
+    } catch (error) {
+      console.error('프로필 완성도 체크 오류:', error)
+    }
+  }, [])
 
   // ✅ 의존성 배열 수정
   useEffect(() => {
@@ -937,14 +949,28 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <Link href="/campaigns" className="mt-6 block">
-          <div className="bg-[#7b68ee] rounded-2xl p-2 cursor-pointer hover:bg-[#7b68ee]/90 transition-colors">
-            <div className="text-center flex items-center justify-center gap-2">
-              <PenTool className="h-4 w-4 text-white" />
-              <span className="text-base font-medium text-white">캠페인 지원하러 가기</span>
+        {/* ✅ 수정: 프로필 완성도에 따라 버튼 비활성화 */}
+        {influencerProfileCompletion >= 60 ? (
+          <Link href="/campaigns" className="mt-6 block">
+            <div className="bg-[#7b68ee] rounded-2xl p-2 cursor-pointer hover:bg-[#7b68ee]/90 transition-colors">
+              <div className="text-center flex items-center justify-center gap-2">
+                <PenTool className="h-4 w-4 text-white" />
+                <span className="text-base font-medium text-white">캠페인 지원하러 가기</span>
+              </div>
+            </div>
+          </Link>
+        ) : (
+          <div className="mt-6 block">
+            <div className="bg-gray-300 rounded-2xl p-2 cursor-not-allowed">
+              <div className="text-center flex items-center justify-center gap-2">
+                <PenTool className="h-4 w-4 text-gray-500" />
+                <span className="text-base font-medium text-gray-500">
+                  프로필 완성 필요 ({influencerProfileCompletion}%)
+                </span>
+              </div>
             </div>
           </div>
-        </Link>
+        )}
 
         <div className="bg-gray-100 rounded-2xl p-2 cursor-pointer hover:bg-gray-200 transition-colors mt-3">
           <div className="text-center flex items-center justify-center gap-2">
