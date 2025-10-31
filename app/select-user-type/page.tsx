@@ -8,14 +8,14 @@ import { Users, Megaphone } from "lucide-react"
 export default function SelectUserTypePage() {
   const router = useRouter()
   const [selectedType, setSelectedType] = useState<"INFLUENCER" | "ADVERTISER" | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedType) {
       alert("회원 유형을 선택해주세요.")
       return
     }
 
-<<<<<<< HEAD
     setIsLoading(true)
 
     try {
@@ -41,13 +41,6 @@ export default function SelectUserTypePage() {
       console.error('회원 유형 저장 오류:', error)
       alert('오류가 발생했습니다.')
       setIsLoading(false)
-=======
-    // 선택한 타입에 따라 회원가입 페이지로 이동
-    if (selectedType === "INFLUENCER") {
-      router.push('/signup/influencer')
-    } else if (selectedType === "ADVERTISER") {
-      router.push('/signup/advertiser')
->>>>>>> 63e1c5b91733f1cf2ee204e6f5c1f3682e024ef5
     }
   }
 
@@ -117,10 +110,10 @@ export default function SelectUserTypePage() {
 
         <Button
           onClick={handleSubmit}
-          disabled={!selectedType}
+          disabled={!selectedType || isLoading}
           className="w-full bg-[#7b68ee] hover:bg-[#7b68ee]/90 text-white font-semibold py-6 rounded-2xl text-lg"
         >
-          다음
+          {isLoading ? "저장 중..." : "시작하기"}
         </Button>
       </div>
     </div>
