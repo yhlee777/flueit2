@@ -22,28 +22,50 @@ export const authOptions: NextAuthOptions = {
         password: { label: "비밀번호", type: "password" }
       },
       async authorize(credentials) {
+        console.log('🔍 [authorize] 시작:', { username: credentials?.username })
+        
         if (!credentials?.username || !credentials?.password) {
+          console.log('❌ [authorize] 자격증명 누락')
           throw new Error("아이디와 비밀번호를 입력해주세요.")
         }
 
+        console.log('🔍 [authorize] DB 조회 시작')
         const { data: user, error } = await supabaseAdmin
           .from('users')
           .select('*')
           .eq('username', credentials.username)
           .single()
 
+        console.log('🔍 [authorize] DB 조회 결과:', {
+          found: !!user,
+          hasPassword: !!user?.password,
+          approval_status: user?.approval_status,
+          error: error?.message
+        })
+
         if (error || !user || !user.password) {
+          console.log('❌ [authorize] 사용자 없음 또는 비밀번호 없음')
           throw new Error("존재하지 않는 사용자입니다.")
         }
 
+        console.log('🔍 [authorize] 비밀번호 비교 시작')
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password
         )
 
+        console.log('🔍 [authorize] 비밀번호 비교 결과:', { isPasswordValid })
+
         if (!isPasswordValid) {
+          console.log('❌ [authorize] 비밀번호 불일치')
           throw new Error("비밀번호가 일치하지 않습니다.")
         }
+
+        console.log('✅ [authorize] 인증 성공:', {
+          id: user.id,
+          email: user.email,
+          username: user.username
+        })
 
         return {
           id: user.id,
@@ -56,13 +78,19 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
-      console.log('🔍 signIn callback 시작', { 
+      console.log('🔍 [signIn callback] 시작', { 
         provider: account?.provider,
-        hasEmail: !!user.email,
-        originalUserId: user.id,
+        hasAccount: !!account,
+        userId: user.id,
       })
       
-      if (account?.provider === 'google' || account?.provider === 'kakao') {
+      // ✅ Credentials 로그인 - 바로 통과
+      if (!account || account.provider === 'credentials') {
+        console.log('✅ [signIn callback] Credentials 로그인 - 통과')
+        return true
+      }
+      
+      if (account.provider === 'google' || account.provider === 'kakao') {
         try {
           const kakaoProfile = profile as any
           
@@ -119,8 +147,12 @@ export const authOptions: NextAuthOptions = {
                   provider: 'kakao',
                   provider_id: kakaoId,
                   user_type: null,
+<<<<<<< HEAD
                   approval_status: 'approved', // ✅ OAuth는 자동 승인
                   approved_at: new Date().toISOString(), // ✅ 승인 시간 기록
+=======
+                  approval_status: 'approved', // 자동 승인
+>>>>>>> 63e1c5b91733f1cf2ee204e6f5c1f3682e024ef5
                   is_admin: false,
                   created_at: new Date().toISOString(),
                 })
@@ -139,14 +171,12 @@ export const authOptions: NextAuthOptions = {
               }
               
               if (newUser) {
-                // ✅ user 객체를 완전히 교체
                 user.id = newUser.id
                 user.email = newUser.email
                 user.name = newUser.username
                 console.log('✅ 신규 사용자 ID 설정 (자동 승인):', newUser.id)
               }
             } else {
-              // ✅ 기존 사용자 - user 객체를 완전히 교체
               user.id = existingUser.id
               user.email = existingUser.email || email
               user.name = existingUser.username || nickname
@@ -188,8 +218,12 @@ export const authOptions: NextAuthOptions = {
                   provider: 'google',
                   provider_id: account.providerAccountId,
                   user_type: null,
+<<<<<<< HEAD
                   approval_status: 'approved', // ✅ OAuth는 자동 승인
                   approved_at: new Date().toISOString(), // ✅ 승인 시간 기록
+=======
+                  approval_status: 'approved', // 자동 승인
+>>>>>>> 63e1c5b91733f1cf2ee204e6f5c1f3682e024ef5
                   is_admin: false,
                   created_at: new Date().toISOString(),
                 })
@@ -227,6 +261,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
       
+      console.log('✅ [signIn callback] 기본 통과')
       return true
     },
     
@@ -237,10 +272,10 @@ export const authOptions: NextAuthOptions = {
       }
       if (user?.id) {
         token.id = user.id
-        console.log('✅ JWT에 user.id 저장:', user.id)
+        console.log('✅ [JWT] user.id 저장:', user.id)
       }
       
-      console.log('🔍 JWT callback 완료:', {
+      console.log('🔍 [JWT callback] 완료:', {
         tokenId: token.id,
         provider: token.provider,
       })
@@ -252,14 +287,11 @@ export const authOptions: NextAuthOptions = {
       session.accessToken = token.accessToken as string
       session.provider = token.provider as string
       
-      console.log('🔍 Session callback 시작:', {
+      console.log('🔍 [Session callback] 시작:', {
         tokenId: token.id,
-        tokenType: typeof token.id,
       })
       
       if (token.id) {
-        console.log('🔍 세션 생성 시작 - token.id:', token.id)
-        
         const { data: user, error } = await supabaseAdmin
           .from('users')
           .select('id, email, username, name, image, user_type, provider_id, approval_status, is_admin')
@@ -267,17 +299,13 @@ export const authOptions: NextAuthOptions = {
           .single()
         
         if (error) {
-          console.error('❌ 세션 사용자 조회 오류:', error)
+          console.error('❌ [Session] 사용자 조회 오류:', error)
         }
         
-        console.log('🔍 DB에서 조회한 사용자 데이터:', {
-          id: user?.id,
-          email: user?.email,
-          username: user?.username,
-          user_type: user?.user_type,
+        console.log('🔍 [Session] DB 조회 결과:', {
+          found: !!user,
           approval_status: user?.approval_status,
           is_admin: user?.is_admin,
-          hasUserType: user?.user_type !== null && user?.user_type !== undefined,
         })
         
         if (user) {
@@ -291,9 +319,8 @@ export const authOptions: NextAuthOptions = {
           // @ts-ignore
           session.user.is_admin = user.is_admin
           
-          console.log('✅ 세션에 userType 설정 완료:', {
-            userType: user.user_type,
-            sessionUserType: session.user.userType,
+          console.log('✅ [Session] 세션 설정 완료:', {
+            userId: user.id,
             approval_status: user.approval_status,
             is_admin: user.is_admin,
           })
@@ -303,20 +330,8 @@ export const authOptions: NextAuthOptions = {
             // @ts-ignore
             session.user.needsEmail = true
           }
-        } else {
-          console.warn('⚠️ DB에서 사용자를 찾을 수 없습니다!')
         }
-      } else {
-        console.warn('⚠️ token.id가 없습니다!')
       }
-      
-      console.log('✅ 최종 세션 반환:', {
-        hasUser: !!session.user,
-        userId: session.user?.id,
-        userType: session.user?.userType,
-        approval_status: (session.user as any)?.approval_status,
-        is_admin: (session.user as any)?.is_admin,
-      })
       
       return session
     },

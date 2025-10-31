@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { TopHeader } from "@/components/top-header"
 import { Button } from "@/components/ui/button"
 import { Heart, Eye, Users, Trash2 } from "lucide-react"
@@ -25,65 +26,185 @@ interface Campaign {
 
 export default function FavoriteCampaignsPage() {
   const router = useRouter()
+  const { data: session } = useSession()
   const [favoriteCampaigns, setFavoriteCampaigns] = useState<Campaign[]>([])
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadFavoriteCampaigns()
-  }, [])
+  }, [session])
 
+  // ✅ DB에서 찜 목록 가져오기
   const loadFavoriteCampaigns = async () => {
     try {
-      // localStorage에서 찜한 캠페인 ID 가져오기
-      const favorites = JSON.parse(localStorage.getItem("favorite_campaigns") || "[]")
-      setFavoriteIds(favorites)
+      setLoading(true)
 
-      if (favorites.length === 0) {
+      if (!session?.user?.id) {
+        // 로그인 안 했으면 localStorage에서만 가져오기
+        const savedFavorites = localStorage.getItem("campaign-favorites")
+        if (savedFavorites) {
+          const ids = JSON.parse(savedFavorites)
+          setFavoriteIds(ids)
+          await loadCampaignDetails(ids)
+        }
         setLoading(false)
         return
       }
 
-      // 각 캠페인 정보 가져오기
-      const campaigns = await Promise.all(
-        favorites.map(async (id: string) => {
-          try {
-            const response = await fetch(`/api/campaigns/${id}`)
-            const data = await response.json()
-            return data.campaign
-          } catch (error) {
-            console.error(`캠페인 ${id} 로드 오류:`, error)
-            return null
-          }
-        })
-      )
+      // ✅ DB에서 찜 목록 조회
+      const response = await fetch('/api/favorites/campaigns')
+      const data = await response.json()
 
-      // null이 아닌 캠페인만 필터링
-      const validCampaigns = campaigns.filter((c) => c !== null)
-      setFavoriteCampaigns(validCampaigns)
+      if (response.ok && data.success) {
+        const ids = data.campaignIds || []
+        setFavoriteIds(ids)
+        console.log('✅ DB에서 찜 목록 로드 성공:', ids)
+        
+        // localStorage와 동기화
+        localStorage.setItem('campaign-favorites', JSON.stringify(ids))
+        
+        // 캠페인 상세 정보 가져오기
+        await loadCampaignDetails(ids)
+      } else {
+        console.error('❌ 찜 목록 로드 실패:', data.error)
+        
+        // 실패 시 localStorage에서 로드
+        const savedFavorites = localStorage.getItem("campaign-favorites")
+        if (savedFavorites) {
+          const ids = JSON.parse(savedFavorites)
+          setFavoriteIds(ids)
+          await loadCampaignDetails(ids)
+        }
+      }
     } catch (error) {
-      console.error("찜한 캠페인 로드 오류:", error)
+      console.error('❌ 찜 목록 로드 오류:', error)
+      
+      // 에러 시 localStorage에서 로드
+      const savedFavorites = localStorage.getItem("campaign-favorites")
+      if (savedFavorites) {
+        const ids = JSON.parse(savedFavorites)
+        setFavoriteIds(ids)
+        await loadCampaignDetails(ids)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  // 찜하기 취소
-  const removeFavorite = (campaignId: string) => {
+  // 캠페인 상세 정보 가져오기
+  const loadCampaignDetails = async (ids: string[]) => {
+    if (ids.length === 0) {
+      setFavoriteCampaigns([])
+      return
+    }
+
+    const campaigns = await Promise.all(
+      ids.map(async (id: string) => {
+        try {
+          const response = await fetch(`/api/campaigns/${id}`)
+          const data = await response.json()
+          return data.campaign
+        } catch (error) {
+          console.error(`캠페인 ${id} 로드 오류:`, error)
+          return null
+        }
+      })
+    )
+
+    // null이 아닌 캠페인만 필터링
+    const validCampaigns = campaigns.filter((c) => c !== null)
+    setFavoriteCampaigns(validCampaigns)
+  }
+
+  // ✅ DB와 연동된 찜하기 취소
+  const removeFavorite = async (campaignId: string) => {
+    // 낙관적 업데이트 (UI 먼저 변경)
     const newFavorites = favoriteIds.filter((id) => id !== campaignId)
-    localStorage.setItem("favorite_campaigns", JSON.stringify(newFavorites))
     setFavoriteIds(newFavorites)
     setFavoriteCampaigns(favoriteCampaigns.filter((c) => c.id !== campaignId))
+    localStorage.setItem("campaign-favorites", JSON.stringify(newFavorites))
+
+    if (!session?.user?.id) {
+      return // 로그인 안 했으면 localStorage만 업데이트
+    }
+
+    try {
+      // DB에서 찜 해제
+      console.log('💔 찜 해제 API 호출:', campaignId)
+      const response = await fetch(`/api/favorites/campaigns?campaignId=${campaignId}`, {
+        method: 'DELETE',
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || '찜 해제에 실패했습니다.')
+      }
+      
+      console.log('✅ 찜 해제 성공')
+    } catch (error) {
+      console.error('❌ 찜 해제 오류:', error)
+      
+      // 에러 발생 시 원래 상태로 롤백
+      setFavoriteIds([...favoriteIds])
+      loadFavoriteCampaigns()
+      
+      alert(error instanceof Error ? error.message : '찜 해제 중 오류가 발생했습니다.')
+    }
   }
 
-  // 모두 삭제
-  const clearAllFavorites = () => {
+  // ✅ 모두 삭제 (DB 연동)
+  const clearAllFavorites = async () => {
     if (!confirm("찜한 캠페인을 모두 삭제하시겠습니까?")) return
 
-    localStorage.setItem("favorite_campaigns", JSON.stringify([]))
+    // 낙관적 업데이트
+    const previousIds = [...favoriteIds]
+    const previousCampaigns = [...favoriteCampaigns]
+    
     setFavoriteIds([])
     setFavoriteCampaigns([])
+    localStorage.setItem("campaign-favorites", JSON.stringify([]))
+
+    if (!session?.user?.id) {
+      return
+    }
+
+    try {
+      // 모든 찜 해제 요청
+      await Promise.all(
+        previousIds.map((id) =>
+          fetch(`/api/favorites/campaigns?campaignId=${id}`, {
+            method: 'DELETE',
+          })
+        )
+      )
+      console.log('✅ 전체 찜 해제 성공')
+    } catch (error) {
+      console.error('❌ 전체 찜 해제 오류:', error)
+      
+      // 에러 발생 시 롤백
+      setFavoriteIds(previousIds)
+      setFavoriteCampaigns(previousCampaigns)
+      localStorage.setItem("campaign-favorites", JSON.stringify(previousIds))
+      
+      alert('전체 삭제 중 오류가 발생했습니다.')
+    }
   }
+
+  // ✅ 페이지 포커스 시 다시 로드
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadFavoriteCampaigns()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [session])
 
   // 리워드 텍스트 생성
   const getRewardText = (campaign: Campaign) => {
